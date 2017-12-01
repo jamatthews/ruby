@@ -135,7 +135,7 @@ rb_array_const_ptr(VALUE a)
 #endif
 
 #ifndef HAVE_RB_SYM2STR
-static inline VALUE
+inline VALUE
 rb_sym2str(VALUE sym)
 {
     return rb_id2str(SYM2ID(sym));
