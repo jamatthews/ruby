@@ -60,17 +60,17 @@ CC_VERSION = @CC_VERSION@
 OUTFLAG = @OUTFLAG@$(empty)
 COUTFLAG = @COUTFLAG@$(empty)
 ARCH_FLAG = @ARCH_FLAG@
-CFLAGS_NO_ARCH = @CFLAGS@
+CFLAGS_NO_ARCH = @CFLAGS@ $(PGO_FLAGS)
 CFLAGS = $(CFLAGS_NO_ARCH) $(ARCH_FLAG)
 cflags = @cflags@
 optflags = @optflags@
 debugflags = @debugflags@
 warnflags = @warnflags@ @strict_warnflags@
-cppflags = @cppflags@
+cppflags = @cppflags@ $(PGO_FLAGS)
 XCFLAGS = @XCFLAGS@
 CPPFLAGS = @CPPFLAGS@ $(INCFLAGS)
 LDFLAGS = @STATIC@ $(CFLAGS) @LDFLAGS@
-EXTLDFLAGS = @EXTLDFLAGS@
+EXTLDFLAGS = @EXTLDFLAGS@ $(PGO_FLAGS)
 XLDFLAGS = @XLDFLAGS@ $(EXTLDFLAGS)
 EXTLIBS =
 LIBS = @LIBS@ $(EXTLIBS)
@@ -529,3 +529,6 @@ loadpath: verconf.h
 un-runnable:
 	$(ECHO) cannot make runnable, configure with --enable-load-relative.
 	$(Q) exit 1
+
+clean-profile:
+	$(Q) find . -name '*.gc??' -exec rm -f {} ';'
