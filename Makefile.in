@@ -69,7 +69,7 @@ warnflags = @warnflags@ @strict_warnflags@
 cppflags = @cppflags@ $(PGO_FLAGS)
 XCFLAGS = @XCFLAGS@
 CPPFLAGS = @CPPFLAGS@ $(INCFLAGS)
-LDFLAGS = @STATIC@ $(CFLAGS) @LDFLAGS@
+LDFLAGS = @STATIC@ $(CFLAGS) $(PGO_FLAGS) @LDFLAGS@
 EXTLDFLAGS = @EXTLDFLAGS@ $(PGO_FLAGS)
 XLDFLAGS = @XLDFLAGS@ $(EXTLDFLAGS)
 EXTLIBS =
@@ -532,3 +532,12 @@ un-runnable:
 
 clean-profile:
 	$(Q) find . -name '*.gc??' -exec rm -f {} ';'
+
+profile-generate:
+	$(MAKE) PGO_FLAGS="-fprofile-generate -lgcov -flto -fuse-linker-plugin -ffat-lto-objects -flto-partition=none"
+
+profile-use:
+	$(MAKE) PGO_FLAGS="-fprofile-use -fprofile-correction -flto -fuse-linker-plugin -ffat-lto-objects -flto-partition=none"
+
+install-optimized:
+		$(MAKE) PGO_FLAGS="-fprofile-use -fprofile-correction -flto -fuse-linker-plugin -ffat-lto-objects -flto-partition=none"
