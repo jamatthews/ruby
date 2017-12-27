@@ -539,5 +539,14 @@ profile-generate:
 profile-use:
 	$(MAKE) PGO_FLAGS="-fprofile-use -fprofile-correction -flto -fuse-linker-plugin -ffat-lto-objects -flto-partition=none"
 
+.PHONY: profile-tasks
+profile-tasks:
+	$(Q) for file in $(srcdir)/profile-tasks/*; do $(srcdir)/ruby --disable-gems $$file > /dev/null; done
+
 install-optimized:
-		$(MAKE) PGO_FLAGS="-fprofile-use -fprofile-correction -flto -fuse-linker-plugin -ffat-lto-objects -flto-partition=none"
+	$(MAKE) clean
+	$(MAKE) profile-generate
+	$(MAKE) clean-profile
+	$(MAKE) profile-tasks
+	$(MAKE) clean
+	$(MAKE) install PGO_FLAGS="-fprofile-use -fprofile-correction -flto -fuse-linker-plugin -ffat-lto-objects -flto-partition=none"
