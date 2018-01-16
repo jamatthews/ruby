@@ -666,7 +666,7 @@ struct heap_page {
 	unsigned int has_remembered_objects : 1;
 	unsigned int has_uncollectible_shady_objects : 1;
 	unsigned int in_tomb : 1;
-  unsigned int cow_barrier : 1;
+  unsigned int frozen : 1;
     } flags;
 
     struct heap_page *free_next;
@@ -1736,7 +1736,7 @@ heap_get_freeobj(rb_objspace_t *objspace, rb_heap_t *heap)
     RVALUE *p = heap->freelist;
 
     while (1) {
-  if (LIKELY(p != NULL) && !(heap->using_page->flags.cow_barrier)){
+  if (LIKELY(p != NULL) && !(heap->using_page->flags.frozen)){
 	    heap->freelist = p->as.free.next;
 	    return (VALUE)p;
 	}
@@ -3410,13 +3410,15 @@ objspace_free_slots(rb_objspace_t *objspace)
 static void
 gc_setup_mark_bits(struct heap_page *page)
 {
-#if USE_RGENGC
-    /* copy oldgen bitmap to mark bitmap */
-    memcpy(&page->mark_bits[0], &page->uncollectible_bits[0], HEAP_PAGE_BITMAP_SIZE);
-#else
-    /* clear mark bitmap */
-    memset(&page->mark_bits[0], 0, HEAP_PAGE_BITMAP_SIZE);
-#endif
+  if(!page->flags.frozen){
+    #if USE_RGENGC
+        /* copy oldgen bitmap to mark bitmap */
+        memcpy(&page->mark_bits[0], &page->uncollectible_bits[0], HEAP_PAGE_BITMAP_SIZE);
+    #else
+        /* clear mark bitmap */
+        memset(&page->mark_bits[0], 0, HEAP_PAGE_BITMAP_SIZE);
+    #endif
+  }
 }
 
 static inline int
@@ -5802,12 +5804,14 @@ rgengc_mark_and_rememberset_clear(rb_objspace_t *objspace, rb_heap_t *heap)
     struct heap_page *page = heap->pages;
 
     while (page) {
-	memset(&page->mark_bits[0],       0, HEAP_PAGE_BITMAP_SIZE);
-	memset(&page->marking_bits[0],    0, HEAP_PAGE_BITMAP_SIZE);
-	memset(&page->uncollectible_bits[0], 0, HEAP_PAGE_BITMAP_SIZE);
-	page->flags.has_uncollectible_shady_objects = FALSE;
-	page->flags.has_remembered_objects = FALSE;
-	page = page->next;
+      if(!(page->flags.frozen)){
+        memset(&page->mark_bits[0],       0, HEAP_PAGE_BITMAP_SIZE);
+        memset(&page->marking_bits[0],    0, HEAP_PAGE_BITMAP_SIZE);
+        memset(&page->uncollectible_bits[0], 0, HEAP_PAGE_BITMAP_SIZE);
+        page->flags.has_uncollectible_shady_objects = FALSE;
+        page->flags.has_remembered_objects = FALSE;
+      }
+	    page = page->next;
     }
 }
 
@@ -6631,11 +6635,11 @@ gc_start_internal(int argc, VALUE *argv, VALUE self)
     return Qnil;
 }
 
-static VALUE rb_gc_cow_barrier(int argc){
+static VALUE rb_gc_freeze(int argc){
   rb_objspace_t *objspace = &rb_objspace;
   struct heap_page *page = heap_eden->pages;
   while(page){
-    page->flags.cow_barrier = 1;
+    page->flags.frozen = 1;
     page = page->next;
   }
   return Qnil;
@@ -9533,7 +9537,7 @@ Init_GC(void)
 
     rb_mGC = rb_define_module("GC");
     rb_define_singleton_method(rb_mGC, "start", gc_start_internal, -1);
-    rb_define_singleton_method(rb_mGC, "cow_barrier", rb_gc_cow_barrier, -1);
+    rb_define_singleton_method(rb_mGC, "freeze", rb_gc_freeze, -1);
     rb_define_singleton_method(rb_mGC, "enable", rb_gc_enable, 0);
     rb_define_singleton_method(rb_mGC, "disable", rb_gc_disable, 0);
     rb_define_singleton_method(rb_mGC, "stress", gc_stress_get, 0);
