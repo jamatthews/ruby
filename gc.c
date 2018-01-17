@@ -540,6 +540,7 @@ typedef struct rb_objspace {
 
     mark_stack_t mark_stack;
     size_t marked_slots;
+    size_t frozen_slots;
 
     struct {
 	struct heap_page **sorted;
@@ -3398,7 +3399,7 @@ objspace_available_slots(rb_objspace_t *objspace)
 static size_t
 objspace_live_slots(rb_objspace_t *objspace)
 {
-    return (objspace->total_allocated_objects - objspace->profile.total_freed_objects) - heap_pages_final_slots;
+    return ((objspace->total_allocated_objects) - objspace->profile.total_freed_objects) - heap_pages_final_slots;
 }
 
 static size_t
@@ -3430,6 +3431,10 @@ gc_page_sweep(rb_objspace_t *objspace, rb_heap_t *heap, struct heap_page *sweep_
     bits_t *bits, bitset;
 
     gc_report(2, objspace, "page_sweep: start.\n");
+
+    if (sweep_page->flags.frozen) {
+      return 0;
+    }
 
     sweep_page->flags.before_sweep = FALSE;
 
@@ -5311,7 +5316,7 @@ gc_marks_start(rb_objspace_t *objspace, int full_mark)
 	objspace->rgengc.uncollectible_wb_unprotected_objects = 0;
 	objspace->rgengc.old_objects = 0;
 	objspace->rgengc.last_major_gc = objspace->profile.count;
-	objspace->marked_slots = 0;
+	objspace->marked_slots = 0 + objspace->frozen_slots;
 	rgengc_mark_and_rememberset_clear(objspace, heap_eden);
     }
     else {
@@ -6638,8 +6643,10 @@ gc_start_internal(int argc, VALUE *argv, VALUE self)
 static VALUE rb_gc_freeze(int argc){
   rb_objspace_t *objspace = &rb_objspace;
   struct heap_page *page = heap_eden->pages;
+  objspace->frozen_slots = 0;
   while(page){
     page->flags.frozen = 1;
+    objspace->frozen_slots += HEAP_PAGE_OBJ_LIMIT;
     page = page->next;
   }
   return Qnil;
