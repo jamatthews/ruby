@@ -503,6 +503,9 @@ typedef struct rb_heap_struct {
 #if GC_ENABLE_INCREMENTAL_MARK
     struct heap_page *pooled_pages;
 #endif
+#if GC_ENABLE_PARALLEL_SWEEP
+    struct heap_page *sweeping_pages;
+#endif
     size_t total_pages;      /* total page count in a heap */
     size_t total_slots;      /* total slot count (about total_pages * HEAP_PAGE_OBJ_LIMIT) */
 } rb_heap_t;
@@ -656,8 +659,9 @@ typedef struct rb_objspace {
 
 #if GC_ENABLE_PARALLEL_SWEEP
   pthread_t sweep_thread;
-  rb_nativethread_lock_t gc_lock;
-  pthread_cond_t parallel_sweep_finished;
+  rb_nativethread_lock_t sweep_pages_lock;
+  rb_nativethread_lock_t free_pages_lock;
+  pthread_cond_t page_freed;
   int parallel_sweeping;
 #endif
 } rb_objspace_t;
@@ -811,7 +815,7 @@ gc_mode_verify(enum gc_mode mode)
 #endif
 #define has_sweeping_pages(heap)         ((heap)->sweep_pages != 0)
 #define is_lazy_sweeping(heap)           (GC_ENABLE_LAZY_SWEEP && has_sweeping_pages(heap))
-#define is_parallel_sweeping(objspace)   (GC_ENABLE_PARALLEL_SWEEP && (objspace)->parallel_sweeping != 0)
+#define is_parallel_sweeping(objspace)   (GC_ENABLE_PARALLEL_SWEEP && (objspace)->parallel_sweeping == TRUE)
 
 #if SIZEOF_LONG == SIZEOF_VOIDP
 # define nonspecial_obj_id(obj) (VALUE)((SIGNED_VALUE)(obj)|FIXNUM_FLAG)
@@ -1755,15 +1759,18 @@ heap_prepare(rb_objspace_t *objspace, rb_heap_t *heap)
 
 #if GC_ENABLE_PARALLEL_SWEEP
     if (is_parallel_sweeping(objspace)) {
-      rb_nativethread_lock_lock(&objspace->gc_lock);
-      //fprintf(stderr, "waiting for sweeper thread during prepare\n");
-      while(!&objspace->parallel_sweep_finished)
-        pthread_cond_wait(&objspace->parallel_sweep_finished, &objspace->gc_lock);
-      rb_nativethread_lock_unlock(&objspace->gc_lock);
+      //fprintf(stderr, "main: locking to use a page\n");
+      rb_nativethread_lock_lock(&objspace->free_pages_lock);
+      while(is_parallel_sweeping(objspace) && heap->free_pages == NULL){
+        //fprintf(stderr, "main: unlocked waiting for free page\n");
+        pthread_cond_wait(&objspace->page_freed, &objspace->free_pages_lock);
+      }
+      //fprintf(stderr, "main: got a free page\n");
+      rb_nativethread_lock_unlock(&objspace->free_pages_lock);
     }
 #endif
 #if GC_ENABLE_LAZY_SWEEP
-    if (is_lazy_sweeping(heap)) {
+    else if (is_lazy_sweeping(heap)) {
 	gc_sweep_continue(objspace, heap);
     }
 #endif
@@ -1789,8 +1796,12 @@ heap_get_freeobj_from_next_freepage(rb_objspace_t *objspace, rb_heap_t *heap)
     while (heap->free_pages == NULL) {
 	heap_prepare(objspace, heap);
     }
+    //fprintf(stderr, "main: locking to grab next free page\n");
+    rb_nativethread_lock_lock(&objspace->free_pages_lock);
     page = heap->free_pages;
     heap->free_pages = page->free_next;
+    rb_nativethread_lock_unlock(&objspace->free_pages_lock);
+
     heap->using_page = page;
 
     GC_ASSERT(page->free_slots != 0);
@@ -3658,19 +3669,35 @@ sweep_worker(void *ptr)
     rb_objspace_t *objspace = (rb_objspace_t *)ptr;
     struct heap_page *sweep_page;
 
-    rb_nativethread_lock_lock(&objspace->gc_lock);
-    objspace->parallel_sweeping = TRUE;
-    sweep_page = heap_eden->sweep_pages;
-    //fprintf(stderr, "sweepin pages, yo\n");
+    //fprintf(stderr, "worker: locking to use grab sweep_pages\n");
+    rb_nativethread_lock_lock(&objspace->sweep_pages_lock);
+
+    heap_eden->sweeping_pages = heap_eden->sweep_pages;
+    heap_eden->sweep_pages = NULL;
+    rb_nativethread_lock_unlock(&objspace->sweep_pages_lock);
+
+    sweep_page = heap_eden->sweeping_pages;
     while (sweep_page) {
-	     struct heap_page *next_sweep_page = heap_eden->sweep_pages = sweep_page->next;
-       gc_page_sweep(objspace, heap_eden, sweep_page);
+	     struct heap_page *next_sweep_page = heap_eden->sweeping_pages = sweep_page->next;
+       int free_slots = gc_page_sweep(objspace, heap_eden, sweep_page);
+
+       if (free_slots > 0)
+       {
+         //fprintf(stderr, "worker: locking to add a free page\n");
+         rb_nativethread_lock_lock(&objspace->free_pages_lock);
+         //fprintf(stderr, "worker: locked to add a free page\n");
+         heap_add_freepage(objspace, heap_eden, sweep_page);
+         rb_nativethread_lock_unlock(&objspace->free_pages_lock);
+         pthread_cond_signal(&objspace->page_freed);
+         //fprintf(stderr, "worker: unlocked\n");
+       }
+
        sweep_page = next_sweep_page;
      }
      objspace->parallel_sweeping = FALSE;
-     pthread_cond_signal(&objspace->parallel_sweep_finished);
-     rb_nativethread_lock_unlock(&objspace->gc_lock);
+     pthread_cond_signal(&objspace->page_freed);
 
+     //fprintf(stderr, "worker: terminating\n");
      pthread_exit(NULL);
 }
 #endif
@@ -3693,6 +3720,22 @@ gc_sweep_start_heap(rb_objspace_t *objspace, rb_heap_t *heap)
 	heap->using_page = NULL;
     }
     heap->freelist = NULL;
+
+    #if GC_ENABLE_PARALLEL_SWEEP
+
+      if (objspace->sweep_thread && objspace->parallel_sweeping){
+          //fprintf(stderr, "main: waiting for existing sweeper to finish");
+          pthread_join(objspace->sweep_thread, NULL);
+      } else if (objspace->sweep_thread == 0) {
+        rb_nativethread_lock_initialize(&objspace->free_pages_lock);
+        rb_nativethread_lock_initialize(&objspace->sweep_pages_lock);
+      }
+      objspace->parallel_sweeping = TRUE;
+      pthread_create(&objspace->sweep_thread, 0, sweep_worker, objspace);
+
+      //fprintf(stderr, "parallel sweeping?: %i", is_parallel_sweeping(objspace));
+      return;
+    #endif
 }
 
 #if defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ == 4
@@ -3708,6 +3751,9 @@ gc_sweep_start(rb_objspace_t *objspace)
 static void
 gc_sweep_finish(rb_objspace_t *objspace)
 {
+    if(is_parallel_sweeping(objspace)){
+      pthread_join(objspace->sweep_thread, NULL);
+    }
     gc_report(1, objspace, "gc_sweep_finish\n");
 
     gc_prof_set_heap_info(objspace);
@@ -3796,27 +3842,10 @@ static void
 gc_sweep_rest(rb_objspace_t *objspace)
 {
     rb_heap_t *heap = heap_eden; /* lazy sweep only for eden */
-
-    #if GC_ENABLE_PARALLEL_SWEEP
-      rb_nativethread_lock_initialize(&objspace->gc_lock);
-      pthread_cond_init(&objspace->parallel_sweep_finished, 0);
-      rb_nativethread_lock_lock(&objspace->gc_lock);
-      if (objspace->sweep_thread == 0)
-        pthread_create(&objspace->sweep_thread, 0, sweep_worker, objspace);
-
-      // releases the lock and waits until sweep finished to lock again
-      //fprintf(stderr, "waiting for sweeper thread while resting\n");
-      while (!&objspace->parallel_sweep_finished)
-        pthread_cond_wait(&objspace->parallel_sweep_finished, &objspace->gc_lock);
-
-      rb_nativethread_lock_unlock(&objspace->gc_lock);
-      pthread_join(objspace->sweep_thread, NULL);
-
-      return;
-    #endif
-
-    while (has_sweeping_pages(heap)) {
-	gc_sweep_step(objspace, heap);
+    if(!is_parallel_sweeping(objspace)){
+      while (has_sweeping_pages(heap)) {
+  	     gc_sweep_step(objspace, heap);
+      }
     }
 }
 
@@ -3826,14 +3855,18 @@ gc_sweep_continue(rb_objspace_t *objspace, rb_heap_t *heap)
 {
     GC_ASSERT(dont_gc == FALSE);
 
-    gc_enter(objspace, "sweep_continue");
-#if USE_RGENGC
-    if (objspace->rgengc.need_major_gc == GPR_FLAG_NONE && heap_increment(objspace, heap)) {
-	gc_report(3, objspace, "gc_sweep_continue: success heap_increment().\n");
+    if (is_parallel_sweeping(objspace)){
+
+    } else {
+      gc_enter(objspace, "sweep_continue");
+  #if USE_RGENGC
+      if (objspace->rgengc.need_major_gc == GPR_FLAG_NONE && heap_increment(objspace, heap)) {
+    gc_report(3, objspace, "gc_sweep_continue: success heap_increment().\n");
+      }
+  #endif
+      gc_sweep_step(objspace, heap);
+      gc_exit(objspace, "sweep_continue");
     }
-#endif
-    gc_sweep_step(objspace, heap);
-    gc_exit(objspace, "sweep_continue");
 }
 #endif
 
@@ -6571,7 +6604,9 @@ gc_rest(rb_objspace_t *objspace)
 	    gc_marks_rest(objspace);
 	    POP_MARK_FUNC_DATA();
 	}
-	if (is_lazy_sweeping(heap_eden)) {
+  if (is_parallel_sweeping(objspace)){
+
+  } else if (is_lazy_sweeping(heap_eden)) {
 	    gc_sweep_rest(objspace);
 	}
 	gc_exit(objspace, "gc_rest");
