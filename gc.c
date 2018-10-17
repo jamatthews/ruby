@@ -309,7 +309,10 @@ int ruby_rgengc_debug;
 #define GC_ENABLE_INCREMENTAL_MARK USE_RINCGC
 #endif
 #ifndef GC_ENABLE_LAZY_SWEEP
-#define GC_ENABLE_LAZY_SWEEP   1
+#define GC_ENABLE_LAZY_SWEEP 1
+#endif
+#ifndef GC_ENABLE_PARALLEL_SWEEP
+#define GC_ENABLE_PARALLEL_SWEEP 1
 #endif
 #ifndef CALC_EXACT_MALLOC_SIZE
 #define CALC_EXACT_MALLOC_SIZE 0
@@ -650,6 +653,13 @@ typedef struct rb_objspace {
 #if GC_DEBUG_STRESS_TO_CLASS
     VALUE stress_to_class;
 #endif
+
+#if GC_ENABLE_PARALLEL_SWEEP
+  pthread_t sweep_thread;
+  rb_nativethread_lock_t gc_lock;
+  pthread_cond_t parallel_sweep_finished;
+  int parallel_sweeping;
+#endif
 } rb_objspace_t;
 
 
@@ -801,6 +811,7 @@ gc_mode_verify(enum gc_mode mode)
 #endif
 #define has_sweeping_pages(heap)         ((heap)->sweep_pages != 0)
 #define is_lazy_sweeping(heap)           (GC_ENABLE_LAZY_SWEEP && has_sweeping_pages(heap))
+#define is_parallel_sweeping(objspace)   (GC_ENABLE_PARALLEL_SWEEP && (objspace)->parallel_sweeping != 0)
 
 #if SIZEOF_LONG == SIZEOF_VOIDP
 # define nonspecial_obj_id(obj) (VALUE)((SIGNED_VALUE)(obj)|FIXNUM_FLAG)
@@ -1341,7 +1352,7 @@ static void heap_page_free(rb_objspace_t *objspace, struct heap_page *page);
 void
 rb_objspace_free(rb_objspace_t *objspace)
 {
-    if (is_lazy_sweeping(heap_eden))
+    if (is_lazy_sweeping(heap_eden) && !is_parallel_sweeping(objspace))
 	rb_bug("lazy sweeping underway when freeing object space");
 
     if (objspace->profile.records) {
@@ -1742,6 +1753,15 @@ heap_prepare(rb_objspace_t *objspace, rb_heap_t *heap)
 {
     GC_ASSERT(heap->free_pages == NULL);
 
+#if GC_ENABLE_PARALLEL_SWEEP
+    if (is_parallel_sweeping(objspace)) {
+      rb_nativethread_lock_lock(&objspace->gc_lock);
+      //fprintf(stderr, "waiting for sweeper thread during prepare\n");
+      while(!&objspace->parallel_sweep_finished)
+        pthread_cond_wait(&objspace->parallel_sweep_finished, &objspace->gc_lock);
+      rb_nativethread_lock_unlock(&objspace->gc_lock);
+    }
+#endif
 #if GC_ENABLE_LAZY_SWEEP
     if (is_lazy_sweeping(heap)) {
 	gc_sweep_continue(objspace, heap);
@@ -3631,6 +3651,30 @@ gc_mode_transition(rb_objspace_t *objspace, enum gc_mode mode)
     gc_mode_set(objspace, mode);
 }
 
+#if GC_ENABLE_PARALLEL_SWEEP
+void *
+sweep_worker(void *ptr)
+{
+    rb_objspace_t *objspace = (rb_objspace_t *)ptr;
+    struct heap_page *sweep_page;
+
+    rb_nativethread_lock_lock(&objspace->gc_lock);
+    objspace->parallel_sweeping = TRUE;
+    sweep_page = heap_eden->sweep_pages;
+    //fprintf(stderr, "sweepin pages, yo\n");
+    while (sweep_page) {
+	     struct heap_page *next_sweep_page = heap_eden->sweep_pages = sweep_page->next;
+       gc_page_sweep(objspace, heap_eden, sweep_page);
+       sweep_page = next_sweep_page;
+     }
+     objspace->parallel_sweeping = FALSE;
+     pthread_cond_signal(&objspace->parallel_sweep_finished);
+     rb_nativethread_lock_unlock(&objspace->gc_lock);
+
+     pthread_exit(NULL);
+}
+#endif
+
 static void
 gc_sweep_start_heap(rb_objspace_t *objspace, rb_heap_t *heap)
 {
@@ -3752,6 +3796,24 @@ static void
 gc_sweep_rest(rb_objspace_t *objspace)
 {
     rb_heap_t *heap = heap_eden; /* lazy sweep only for eden */
+
+    #if GC_ENABLE_PARALLEL_SWEEP
+      rb_nativethread_lock_initialize(&objspace->gc_lock);
+      pthread_cond_init(&objspace->parallel_sweep_finished, 0);
+      rb_nativethread_lock_lock(&objspace->gc_lock);
+      if (objspace->sweep_thread == 0)
+        pthread_create(&objspace->sweep_thread, 0, sweep_worker, objspace);
+
+      // releases the lock and waits until sweep finished to lock again
+      //fprintf(stderr, "waiting for sweeper thread while resting\n");
+      while (!&objspace->parallel_sweep_finished)
+        pthread_cond_wait(&objspace->parallel_sweep_finished, &objspace->gc_lock);
+
+      rb_nativethread_lock_unlock(&objspace->gc_lock);
+      pthread_join(objspace->sweep_thread, NULL);
+
+      return;
+    #endif
 
     while (has_sweeping_pages(heap)) {
 	gc_sweep_step(objspace, heap);
