@@ -11,6 +11,12 @@
 
 #include <math.h>
 
+RUBY_SYMBOL_EXPORT_BEGIN
+int trace_recording = 0;
+void (*trace_dispatch) (const rb_thread_t *_thread, const rb_control_frame_t *_cfp, const VALUE *pc);
+void (*record_instruction) (const rb_thread_t *_thread, const rb_control_frame_t *_cfp, const VALUE *pc);
+RUBY_SYMBOL_EXPORT_END
+
 #if VM_COLLECT_USAGE_DETAILS
 static void vm_analysis_insn(int insn);
 #endif

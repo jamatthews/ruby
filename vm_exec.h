@@ -104,10 +104,16 @@ error !
 #if OPT_DIRECT_THREADED_CODE
 
 /* for GCC 3.4.x */
-#define TC_DISPATCH(insn) \
+#define TC_DISPATCH_ORIGINAL(insn) \
   INSN_DISPATCH_SIG(insn); \
   RB_GNUC_EXTENSION_BLOCK(goto *(void const *)GET_CURRENT_INSN()); \
   ;
+
+  #define TC_DISPATCH(insn) \
+    INSN_DISPATCH_SIG(insn); \
+    void const *next = (trace_recording) ? LABEL_PTR(record) : (void const *)GET_CURRENT_INSN();\
+    goto *next; \
+    ;
 
 #else
 /* token threaded code */

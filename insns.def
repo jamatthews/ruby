@@ -1453,3 +1453,30 @@ answer
 {
     ret = INT2FIX(42);
 }
+
+/* Trigger trace recording after iterating 1000 times */
+DEFINE_INSN
+hot_loop
+()
+()
+()
+{
+    if (trace_dispatch){
+      trace_dispatch(GET_THREAD(), GET_CFP(), GET_PC());
+      RESTORE_REGS();
+    }
+}
+
+/* Record the current isntruction */
+DEFINE_INSN
+record
+(VALUE dummy)
+()
+()
+{
+    if (record_instruction) {
+      record_instruction(GET_THREAD(), GET_CFP(), GET_PC());
+    }
+    RESTORE_REGS();
+    TC_DISPATCH_ORIGINAL(record);
+}

@@ -5322,6 +5322,7 @@ compile_loop(rb_iseq_t *iseq, LINK_ANCHOR *const ret, const NODE *const node, in
 	node->nd_body ? nd_last_column(node->nd_body) : last_column,
 	"body",
 	branches);
+    ADD_INSN(ret, line, hot_loop); /* counter for triggering tracing */
     CHECK(COMPILE_POPPED(ret, "while body", node->nd_body));
     ADD_LABEL(ret, next_label);	/* next */
 

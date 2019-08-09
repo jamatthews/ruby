@@ -1377,7 +1377,9 @@ int rb_dvar_defined(ID, const struct rb_block *);
 int rb_local_defined(ID, const struct rb_block *);
 const char * rb_insns_name(int i);
 VALUE rb_insns_name_array(void);
+RUBY_SYMBOL_EXPORT_BEGIN
 int rb_vm_insn_addr2insn(const void *);
+RUBY_SYMBOL_EXPORT_END
 
 /* complex.c */
 VALUE rb_dbl_complex_new_polar_pi(double abs, double ang);
