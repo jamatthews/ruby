@@ -434,6 +434,9 @@ int ruby_rgengc_debug;
 #ifndef GC_ENABLE_LAZY_SWEEP
 #define GC_ENABLE_LAZY_SWEEP   1
 #endif
+#ifndef GC_ENABLE_BUMP_ALLOCATION
+#define GC_ENABLE_BUMP_ALLOCATION 1
+#endif
 #ifndef CALC_EXACT_MALLOC_SIZE
 #define CALC_EXACT_MALLOC_SIZE USE_GC_MALLOC_OBJ_INFO_DETAILS
 #endif
@@ -629,6 +632,8 @@ typedef struct mark_stack {
 
 typedef struct rb_heap_struct {
     RVALUE *freelist;
+    RVALUE *bump_pointer;
+    RVALUE *bump_pointer_max;
 
     struct heap_page *free_pages;
     struct heap_page *using_page;
@@ -1984,6 +1989,7 @@ heap_get_freeobj_from_next_freepage(rb_objspace_t *objspace, rb_heap_t *heap)
 {
     struct heap_page *page;
     RVALUE *p;
+    bool bump_allocate;
 
     while (heap->free_pages == NULL) {
 	heap_prepare(objspace, heap);
@@ -1993,11 +1999,21 @@ heap_get_freeobj_from_next_freepage(rb_objspace_t *objspace, rb_heap_t *heap)
     heap->using_page = page;
 
     GC_ASSERT(page->free_slots != 0);
+    bump_allocate = page->free_slots == page->total_slots;
     asan_unpoison_memory_region(&page->freelist, sizeof(RVALUE*), false);
     p = page->freelist;
     page->freelist = NULL;
     asan_poison_memory_region(&page->freelist, sizeof(RVALUE*));
     page->free_slots = 0;
+
+    if(bump_allocate) {
+      heap->bump_pointer = page->start;
+      heap->bump_pointer_max = page->start + page->total_slots;
+      p = page->start;
+    } else {
+      heap->bump_pointer = NULL;
+      heap->bump_pointer_max = NULL;
+    }
     asan_unpoison_object((VALUE)p, true);
     return p;
 }
@@ -2006,9 +2022,17 @@ static inline VALUE
 heap_get_freeobj_head(rb_objspace_t *objspace, rb_heap_t *heap)
 {
     RVALUE *p = heap->freelist;
-    if (LIKELY(p != NULL)) {
-	heap->freelist = p->as.free.next;
+
+    if(LIKELY(heap->bump_pointer < heap->bump_pointer_max)) {
+      p = heap->bump_pointer;
+      heap->bump_pointer += 1;
+    } else if (heap->bump_pointer) {
+      return Qfalse;
     }
+    else if (LIKELY(p != NULL)) {
+        heap->freelist = p->as.free.next;
+    }
+
     asan_unpoison_object((VALUE)p, true);
     return (VALUE)p;
 }
@@ -2016,18 +2040,25 @@ heap_get_freeobj_head(rb_objspace_t *objspace, rb_heap_t *heap)
 static inline VALUE
 heap_get_freeobj(rb_objspace_t *objspace, rb_heap_t *heap)
 {
-    RVALUE *p = heap->freelist;
+  RVALUE *p = heap->freelist;
 
-    while (1) {
-	if (LIKELY(p != NULL)) {
-            asan_unpoison_object((VALUE)p, true);
-	    heap->freelist = p->as.free.next;
-	    return (VALUE)p;
-	}
-	else {
-	    p = heap_get_freeobj_from_next_freepage(objspace, heap);
-	}
+  while (1) {
+    if(LIKELY(heap->bump_pointer < heap->bump_pointer_max)) {
+      p = heap->bump_pointer;
+      heap->bump_pointer += 1;
+      asan_unpoison_object((VALUE)p, true);
+      return (VALUE)p;
     }
+    else if (LIKELY(p != NULL)) {
+      if (heap->bump_pointer == NULL)
+        heap->freelist = p->as.free.next;
+      asan_unpoison_object((VALUE)p, true);
+      return (VALUE)p;
+    }
+    else {
+      p = heap_get_freeobj_from_next_freepage(objspace, heap);
+    }
+  }
 }
 
 void
@@ -4311,6 +4342,10 @@ gc_sweep_start_heap(rb_objspace_t *objspace, rb_heap_t *heap)
 {
     heap->sweeping_page = list_top(&heap->pages, struct heap_page, page_node);
     heap->free_pages = NULL;
+#if GC_ENABLE_BUMP_ALLOCATION
+    heap->bump_pointer = NULL;
+    heap->bump_pointer_max = NULL;
+#endif
 #if GC_ENABLE_INCREMENTAL_MARK
     heap->pooled_pages = NULL;
     objspace->rincgc.pooled_slots = 0;
