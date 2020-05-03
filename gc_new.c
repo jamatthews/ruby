@@ -168,3 +168,39 @@ rb_new_heap_mark(const void *ptr)
   struct block *block = GET_BLOCK(ptr);
   block->header.marked = true;
 }
+
+
+void
+rb_new_heap_start_marking(int full_marking)
+{
+  struct new_heap* heap = new_heap_get();
+
+  if (!full_marking) return;
+
+  for(size_class_t size_class = 0; size_class < NEW_HEAP_SIZE_CLASSES; size_class++) {
+    struct block *block = heap->used_blocks[size_class];
+    while (block) {
+        block->header.marked = false;
+        block = block->header.next_block;
+    }
+  }
+}
+
+void
+rb_new_heap_finish_marking(int full_marking)
+{
+  struct new_heap* heap = new_heap_get();
+
+  if (!full_marking) return;
+
+  for(size_class_t size_class = 0; size_class < NEW_HEAP_SIZE_CLASSES; size_class++) {
+    struct block *block = heap->used_blocks[size_class];
+    while (block) {
+        if (!block->header.marked && block->header.index) {
+          // fprintf(stderr, "resetting an empty block!\n");
+          block->header.index = 0;
+        }
+        block = block->header.next_block;
+    }
+  }
+}

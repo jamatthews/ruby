@@ -6491,6 +6491,7 @@ gc_marks_finish(rb_objspace_t *objspace)
     }
 
     rb_transient_heap_finish_marking();
+    rb_new_heap_finish_marking(is_full_marking(objspace));
 
     gc_event_hook(objspace, RUBY_INTERNAL_EVENT_GC_END_MARK, 0);
 
@@ -7366,6 +7367,7 @@ gc_start(rb_objspace_t *objspace, int reason)
     gc_prof_setup_new_record(objspace, reason);
     gc_reset_malloc_info(objspace);
     rb_transient_heap_start_marking(do_full_mark);
+    rb_new_heap_start_marking(do_full_mark);
 
     gc_event_hook(objspace, RUBY_INTERNAL_EVENT_GC_START, 0 /* TODO: pass minor/immediate flag? */);
     GC_ASSERT(during_gc);

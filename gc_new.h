@@ -16,8 +16,8 @@
 #endif
 
 /* public API */
-
-/* Allocate req_size bytes from the new heap */
 void *rb_new_heap_alloc(VALUE obj, size_t req_size);
 void  rb_new_heap_mark(const void *ptr);
+void rb_new_heap_start_marking(int full_marking);
+void rb_new_heap_finish_marking(int full_marking);
 #endif
