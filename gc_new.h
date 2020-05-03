@@ -19,5 +19,5 @@
 
 /* Allocate req_size bytes from the new heap */
 void *rb_new_heap_alloc(VALUE obj, size_t req_size);
-
+void  rb_new_heap_mark(const void *ptr);
 #endif

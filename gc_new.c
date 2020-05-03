@@ -151,3 +151,8 @@ rb_new_heap_alloc(VALUE obj, size_t req_size)
 
     return NULL;
 }
+
+void
+rb_new_heap_mark(const void *ptr)
+{
+}

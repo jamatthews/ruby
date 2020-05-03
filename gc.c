@@ -66,6 +66,7 @@
 #include "debug_counter.h"
 #include "eval_intern.h"
 #include "gc.h"
+#include "gc_new.h"
 #include "id_table.h"
 #include "internal.h"
 #include "internal/class.h"
@@ -5453,6 +5454,10 @@ gc_mark_children(rb_objspace_t *objspace, VALUE obj)
 
             if (objspace->mark_func_data == NULL) {
                 if (!FL_TEST_RAW(obj, RARRAY_EMBED_FLAG) &&
+                    RARRAY_NEW_HEAP_P(obj)) {
+                    rb_new_heap_mark(ptr);
+                }
+                else if (!FL_TEST_RAW(obj, RARRAY_EMBED_FLAG) &&
                     RARRAY_TRANSIENT_P(obj)) {
                     rb_transient_heap_mark(obj, ptr);
                 }
