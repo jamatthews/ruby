@@ -21,12 +21,21 @@
 #include <sys/mman.h>
 #include <errno.h>
 
+#if !USE_NEW_HEAP
 #define USE_NEW_HEAP 1
+#endif
 
 #define NEW_HEAP_ALLOC_MAX 512 /* 512 B */
 #define NEW_HEAP_ALLOC_ALIGN RUBY_ALIGNOF(void *)
 #define NEW_HEAP_BLOCK_SIZE (1024 * 16) /* 16KB int16_t */
 #define NEW_HEAP_SIZE_CLASSES 64
+
+typedef int64_t size_class_t;
+typedef uintptr_t bits_t;
+
+#define NEW_HEAP_BLOCK_ALIGN_LOG 14
+#define NEW_HEAP_BLOCK_ALIGN_MASK (~(~0UL << NEW_HEAP_BLOCK_ALIGN_LOG))
+#define GET_BLOCK(x) ((struct block *)((bits_t)(x) & ~(NEW_HEAP_BLOCK_ALIGN_MASK)))
 
 #define NEW_HEAP_DEBUG 0
 #define NEW_HEAP_DEBUG_INFINITE_BLOCK 1
@@ -34,7 +43,7 @@
 #define ROUND_UP(v, a)  (((size_t)(v) + (a) - 1) & ~((a) - 1))
 #define NEW_GC_ASSERT(expr) RUBY_ASSERT_MESG_WHEN(NEW_HEAP_DEBUG > 0, expr, #expr)
 
-typedef int64_t size_class_t;
+
 
 struct block {
   struct header {
@@ -42,6 +51,7 @@ struct block {
     int16_t size;
     struct block* next_block;
     int16_t index;
+    bool marked;
   } header;
 
   char buff[NEW_HEAP_BLOCK_SIZE - sizeof(struct header)];
@@ -155,4 +165,6 @@ rb_new_heap_alloc(VALUE obj, size_t req_size)
 void
 rb_new_heap_mark(const void *ptr)
 {
+  struct block *block = GET_BLOCK(ptr);
+  block->header.marked = true;
 }
