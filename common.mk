@@ -128,6 +128,7 @@ COMMONOBJS    = array.$(OBJEXT) \
 		regexec.$(OBJEXT) \
 		regparse.$(OBJEXT) \
 		regsyntax.$(OBJEXT) \
+		rmalloc.$(OBJEXT) \
 		ruby.$(OBJEXT) \
 		scheduler.$(OBJEXT) \
 		signal.$(OBJEXT) \

@@ -39,6 +39,10 @@
 # define USE_TRANSIENT_HEAP 1
 #endif
 
+#ifndef USE_RMALLOC
+# define USE_RMALLOC 1
+#endif
+
 #define RARRAY(obj)            RBIMPL_CAST((struct RArray *)(obj))
 #define RARRAY_EMBED_FLAG      RARRAY_EMBED_FLAG
 #define RARRAY_EMBED_LEN_MASK  RARRAY_EMBED_LEN_MASK
@@ -48,6 +52,11 @@
 # define RARRAY_TRANSIENT_FLAG RARRAY_TRANSIENT_FLAG
 #else
 # define RARRAY_TRANSIENT_FLAG 0
+#endif
+#if USE_RMALLOC
+# define RARRAY_RMALLOC_FLAG RARRAY_RMALLOC_FLAG
+#else
+# define RARRAY_RMALLOC_FLAG 0
 #endif
 #define RARRAY_LEN                 rb_array_len
 #define RARRAY_CONST_PTR           rb_array_const_ptr
@@ -65,6 +74,7 @@
 #define RARRAY_EMBED_LEN   RARRAY_EMBED_LEN
 #define RARRAY_LENINT      RARRAY_LENINT
 #define RARRAY_TRANSIENT_P RARRAY_TRANSIENT_P
+#define RARRAY_RMALLOC_P   RARRAY_RMALLOC_P
 #define RARRAY_ASET        RARRAY_ASET
 #define RARRAY_PTR         RARRAY_PTR
 /** @endcond */
@@ -76,6 +86,10 @@ enum ruby_rarray_flags {
 #if USE_TRANSIENT_HEAP
     ,
     RARRAY_TRANSIENT_FLAG  = RUBY_FL_USER13
+#endif
+#if USE_RMALLOC
+    ,
+    RARRAY_RMALLOC_FLAG  = RUBY_FL_USER17
 #endif
 };
 
@@ -156,6 +170,20 @@ RARRAY_TRANSIENT_P(VALUE ary)
 
 #if USE_TRANSIENT_HEAP
     return RB_FL_ANY_RAW(ary, RARRAY_TRANSIENT_FLAG);
+#else
+    return false;
+#endif
+}
+
+RBIMPL_ATTR_PURE_UNLESS_DEBUG()
+RBIMPL_ATTR_ARTIFICIAL()
+static inline bool
+RARRAY_RMALLOC_P(VALUE ary)
+{
+    RBIMPL_ASSERT_TYPE(ary, RUBY_T_ARRAY);
+
+#if USE_RMALLOC
+    return RB_FL_ANY_RAW(ary, RARRAY_RMALLOC_FLAG);
 #else
     return false;
 #endif

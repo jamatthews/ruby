@@ -24,6 +24,9 @@ rb_call_inits(void)
 #if USE_TRANSIENT_HEAP
     CALL(TransientHeap);
 #endif
+#if USE_RMALLOC
+    CALL(Rmalloc);
+#endif
     CALL(vm_postponed_job);
     CALL(Method);
     CALL(RandomSeedCore);

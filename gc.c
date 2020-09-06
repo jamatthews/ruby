@@ -90,6 +90,7 @@
 #include "mjit.h"
 #include "probes.h"
 #include "regint.h"
+#include "rmalloc.h"
 #include "ruby/debug.h"
 #include "ruby/io.h"
 #include "ruby/re.h"

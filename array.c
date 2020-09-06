@@ -25,6 +25,7 @@
 #include "internal/rational.h"
 #include "internal/vm.h"
 #include "probes.h"
+#include "rmalloc.h"
 #include "ruby/encoding.h"
 #include "ruby/st.h"
 #include "ruby/util.h"
@@ -319,8 +320,14 @@ ary_memcpy(VALUE ary, long beg, long argc, const VALUE *argv)
 static VALUE *
 ary_heap_alloc(VALUE ary, size_t capa)
 {
-    VALUE *ptr = rb_transient_heap_alloc(ary, sizeof(VALUE) * capa);
+    VALUE *ptr = rmalloc(sizeof(VALUE) * capa);
+    if(ptr != NULL) {
+      RARY_TRANSIENT_UNSET(ary);
+      RARY_RMALLOC_SET(ary);
+      return ptr;
+    }
 
+    ptr = rb_transient_heap_alloc(ary, sizeof(VALUE) * capa);
     if (ptr != NULL) {
         RARY_TRANSIENT_SET(ary);
     }
@@ -335,7 +342,10 @@ ary_heap_alloc(VALUE ary, size_t capa)
 static void
 ary_heap_free_ptr(VALUE ary, const VALUE *ptr, long size)
 {
-    if (RARRAY_TRANSIENT_P(ary)) {
+    if (RARRAY_RMALLOC_P(ary)) {
+      rfree((void *)ptr);
+    }
+    else if (RARRAY_TRANSIENT_P(ary)) {
         /* ignore it */
     }
     else {
@@ -359,7 +369,23 @@ ary_heap_realloc(VALUE ary, size_t new_capa)
 {
     size_t old_capa = ARY_HEAP_CAPA(ary);
 
-    if (RARRAY_TRANSIENT_P(ary)) {
+    if (RARRAY_RMALLOC_P(ary)) {
+      if (new_capa <= old_capa) {
+          /* do nothing */
+      } else {
+        VALUE *new_ptr = rmalloc(sizeof(VALUE) * new_capa);
+
+        if (new_ptr == NULL) {
+            new_ptr = ALLOC_N(VALUE, new_capa);
+            RARY_RMALLOC_UNSET(ary);
+        }
+
+        MEMCPY(new_ptr, ARY_HEAP_PTR(ary), VALUE, old_capa);
+        rfree((void *) ARY_HEAP_PTR(ary));
+        ARY_SET_PTR(ary, new_ptr);
+      }
+    }
+    else if (RARRAY_TRANSIENT_P(ary)) {
         if (new_capa <= old_capa) {
             /* do nothing */
         }
@@ -848,7 +874,7 @@ ary_discard(VALUE ary)
 {
     rb_ary_free(ary);
     RBASIC(ary)->flags |= RARRAY_EMBED_FLAG;
-    RBASIC(ary)->flags &= ~(RARRAY_EMBED_LEN_MASK | RARRAY_TRANSIENT_FLAG);
+    RBASIC(ary)->flags &= ~(RARRAY_EMBED_LEN_MASK | RARRAY_TRANSIENT_FLAG | RARRAY_RMALLOC_FLAG);
 }
 
 static VALUE
@@ -877,6 +903,9 @@ ary_make_shared(VALUE ary)
         VALUE vshared = (VALUE)shared;
 
         rb_ary_transient_heap_evacuate(ary, TRUE);
+        #if USE_RMALLOC
+        if (RARRAY_RMALLOC_P(ary)) RARY_RMALLOC_SET(vshared);
+        #endif
         ptr = ARY_HEAP_PTR(ary);
 
         FL_UNSET_EMBED(vshared);
