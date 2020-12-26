@@ -1,0 +1,118 @@
+#include "internal.h"
+#include "internal/compile.h"
+
+#include "dynasm_jit.h"
+#include "dynasm/dasm_proto.h"
+#include "dynasm/dasm_x86.h"
+
+#include <sys/mman.h>
+#if !defined(MAP_ANONYMOUS) && defined(MAP_ANON)
+#define MAP_ANONYMOUS MAP_ANON
+#endif
+
+#include "vm_core.h"
+#include "vm_callinfo.h"
+#include "vm_exec.h"
+#include "vm_insnhelper.h"
+
+
+#include "builtin.h"
+#include "insns.inc"
+#include "insns_info.inc"
+
+typedef rb_control_frame_t* (*insn_function)(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp);
+typedef VALUE (*dynamic_assembeled_function)(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp);
+
+static dynamic_assembeled_function jit_compile(rb_execution_context_t *ec);
+static insn_function* insn_functions_table;
+static void jit_insn(int insn, dasm_State** Dst);
+
+static void* link_and_encode(dasm_State** d)
+{
+  size_t sz;
+  void* buf;
+  dasm_link(d, &sz);
+  buf = mmap(0, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  dasm_encode(d, buf);
+  mprotect(buf, sz, PROT_READ | PROT_EXEC);
+  return buf;
+}
+
+VALUE dynasm_jit_exec(rb_execution_context_t *ec)
+{
+  rb_thread_t *th = rb_ec_thread_ptr(ec);
+  dynamic_assembeled_function jit_function = jit_compile(ec);
+  if(jit_function) {
+    jit_function(ec, ec->cfp);
+    if (th->retval != Qundef) {
+      VALUE ret = th->retval;
+      th->retval = Qundef;
+
+      return ret;
+    } else {
+      VALUE err = ec->errinfo;
+      ec->errinfo = Qnil;
+      return err;
+    }
+  } else {
+    return Qundef;
+  }
+}
+
+void
+Init_DynasmVm(void)
+{
+  insn_functions_table = (insn_function*) rb_vm_get_insn_functions_table();
+}
+
+static dynamic_assembeled_function
+jit_compile(rb_execution_context_t *ec)
+{
+  const struct rb_iseq_constant_body *body = ec->cfp->iseq->body;
+  dasm_State* d;
+  |.arch x64
+  |.section code
+  dasm_init(&d, DASM_MAXSECTION);
+  |.globals lbl_
+  void* labels[lbl__MAX];
+  dasm_State** Dst = &d;
+  dasm_setupglobal(&d, labels, lbl__MAX);
+  |.actionlist actions
+  dasm_setup(&d, actions);
+  dasm_growpc(&d, body->iseq_size);
+  |.code
+  |->start:
+  unsigned int pos = 0;
+  int insn;
+
+  while (pos < body->iseq_size) {
+    |=>pos:
+    insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
+    switch(insn){
+      case BIN(putnil):
+      case BIN(pop):
+      case BIN(leave):
+        jit_insn(insn, Dst);
+        break;
+      default:
+        return NULL;
+    }
+    pos += insn_len(insn);
+  }
+  |ret
+  pos = 0;
+  while (pos < body->iseq_size) {
+    insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
+    pos += insn_len(insn);
+  }
+  fprintf(stderr, "\n");
+  link_and_encode(&d);
+  dasm_free(&d);
+  return (dynamic_assembeled_function) labels[lbl_start];
+}
+
+static void jit_insn(int insn, dasm_State** Dst)
+{
+  | mov64 rax, (uint64_t)(insn_functions_table[insn])
+  | call rax
+}

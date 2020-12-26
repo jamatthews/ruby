@@ -10,6 +10,7 @@
 
 #define vm_exec rb_vm_exec
 
+#include "dynasm_jit.h"
 #include "eval_intern.h"
 #include "gc.h"
 #include "internal.h"
@@ -2158,10 +2159,14 @@ vm_exec(rb_execution_context_t *ec, bool mjit_enable_p)
 
     _tag.retval = Qnil;
     if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-        if (!mjit_enable_p || (result = mjit_exec(ec)) == Qundef) {
-            result = vm_exec_core(ec, initial);
+        if((result = dynasm_jit_exec(ec)) != Qundef) {
+
+        } else {
+          if (!mjit_enable_p || (result = mjit_exec(ec)) == Qundef) {
+              result = vm_exec_core(ec, initial);
+          }
+          goto vm_loop_start; /* fallback to the VM */
         }
-        goto vm_loop_start; /* fallback to the VM */
     }
     else {
 	result = ec->errinfo;

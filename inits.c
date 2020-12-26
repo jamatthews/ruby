@@ -63,6 +63,7 @@ rb_call_inits(void)
     CALL(Enumerator);
     CALL(Ractor);
     CALL(VM);
+    CALL(DynasmVm);
     CALL(ISeq);
     CALL(Thread);
     CALL(Fiber_Scheduler);

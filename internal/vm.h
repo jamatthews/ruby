@@ -64,6 +64,8 @@ MJIT_SYMBOL_EXPORT_BEGIN
 VALUE vm_exec(struct rb_execution_context_struct *, bool); /* used in JIT-ed code */
 MJIT_SYMBOL_EXPORT_END
 
+const void **rb_vm_get_insn_functions_table(void);
+
 /* vm_eval.c */
 VALUE rb_current_realfilepath(void);
 VALUE rb_check_block_call(VALUE, ID, int, const VALUE *, rb_block_call_func_t, VALUE);

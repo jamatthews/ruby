@@ -94,6 +94,7 @@ COMMONOBJS    = array.$(OBJEXT) \
 		debug_counter.$(OBJEXT) \
 		dir.$(OBJEXT) \
 		dln_find.$(OBJEXT) \
+		dynasm_jit.$(OBJEXT) \
 		encoding.$(OBJEXT) \
 		enum.$(OBJEXT) \
 		enumerator.$(OBJEXT) \
@@ -1009,6 +1010,8 @@ $(srcs_vpath)insns_info.inc: $(tooldir)/ruby_vm/views/insns_info.inc.erb $(inc_c
   $(tooldir)/ruby_vm/views/_insn_len_info.erb $(tooldir)/ruby_vm/views/_insn_operand_info.erb \
   $(tooldir)/ruby_vm/views/_attributes.erb $(tooldir)/ruby_vm/views/_comptime_insn_stack_increase.erb \
   $(tooldir)/ruby_vm/views/_insn_sp_pc_dependency.erb
+$(srcs_vpath)vm_insn_functions.inc: $(tooldir)/ruby_vm/views/vm_insn_functions.inc.erb $(inc_common_headers)
+$(srcs_vpath)vm_insn_functions_table.inc: $(tooldir)/ruby_vm/views/vm_insn_functions_table.inc.erb $(inc_common_headers)
 $(srcs_vpath)vmtc.inc: $(tooldir)/ruby_vm/views/vmtc.inc.erb $(inc_common_headers)
 $(srcs_vpath)vm.inc: $(tooldir)/ruby_vm/views/vm.inc.erb $(inc_common_headers) \
   $(tooldir)/ruby_vm/views/_insn_entry.erb $(tooldir)/ruby_vm/views/_trace_instruction.erb
@@ -1079,6 +1082,12 @@ incs: $(INSNS) {$(VPATH)}node_name.inc {$(VPATH)}known_errors.inc \
       {$(VPATH)}id.h {$(VPATH)}probes.dmyh
 
 insns: $(INSNS)
+
+dynasm/minilua: $(srcdir)/dynasm/minilua.c
+	$(CC) $(srcdir)/dynasm/minilua.c -lm -o $@
+
+dynasm_jit.c: dynasm/minilua dynasm/dynasm.lua $(srcdir)/dynasm_jit.dasc
+	$(srcdir)/dynasm/minilua $(srcdir)/dynasm/dynasm.lua -o $@ $(srcdir)/dynasm_jit.dasc
 
 id.h: $(tooldir)/generic_erb.rb $(srcdir)/template/id.h.tmpl $(srcdir)/defs/id.def
 	$(ECHO) generating $@
@@ -15607,10 +15616,13 @@ vm.$(OBJEXT): {$(VPATH)}vm_exec.c
 vm.$(OBJEXT): {$(VPATH)}vm_exec.h
 vm.$(OBJEXT): {$(VPATH)}vm_insnhelper.c
 vm.$(OBJEXT): {$(VPATH)}vm_insnhelper.h
+vm.$(OBJEXT): {$(VPATH)}vm_insn_functions.inc
+vm.$(OBJEXT): {$(VPATH)}vm_insn_functions_table.inc
 vm.$(OBJEXT): {$(VPATH)}vm_method.c
 vm.$(OBJEXT): {$(VPATH)}vm_opts.h
 vm.$(OBJEXT): {$(VPATH)}vm_sync.h
 vm.$(OBJEXT): {$(VPATH)}vmtc.inc
+vm.$(OBJEXT): {$(VPATH)}dynasm_jit.h
 vm_backtrace.$(OBJEXT): $(CCAN_DIR)/check_type/check_type.h
 vm_backtrace.$(OBJEXT): $(CCAN_DIR)/container_of/container_of.h
 vm_backtrace.$(OBJEXT): $(CCAN_DIR)/list/list.h

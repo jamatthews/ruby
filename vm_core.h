@@ -437,6 +437,7 @@ struct rb_iseq_constant_body {
     long unsigned total_calls; /* number of total calls with `mjit_exec()` */
     struct rb_mjit_unit *jit_unit;
 #endif
+    VALUE (*dynasm_jit_func)(struct rb_execution_context_struct *);
 };
 
 /* T_IMEMO/iseq */
@@ -969,9 +970,9 @@ typedef struct rb_thread_struct {
     VALUE value;
 
     /* temporary place of retval on OPT_CALL_THREADED_CODE */
-#if OPT_CALL_THREADED_CODE
+// #if OPT_CALL_THREADED_CODE
     VALUE retval;
-#endif
+// #endif
 
     /* async errinfo queue */
     VALUE pending_interrupt_queue;

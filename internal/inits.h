@@ -42,6 +42,8 @@ void Init_vm_eval(void);
 /* vm_insnhelper.c */
 void Init_vm_stack_canary(void);
 
+void Init_DynasmVM(void);
+
 /* vm_method.c */
 void Init_eval_method(void);
 
