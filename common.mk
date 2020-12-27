@@ -1007,6 +1007,7 @@ $(srcs_vpath)insns_info.inc: $(tooldir)/ruby_vm/views/insns_info.inc.erb $(inc_c
   $(tooldir)/ruby_vm/views/_insn_len_info.erb $(tooldir)/ruby_vm/views/_insn_operand_info.erb \
   $(tooldir)/ruby_vm/views/_attributes.erb $(tooldir)/ruby_vm/views/_comptime_insn_stack_increase.erb \
   $(tooldir)/ruby_vm/views/_insn_sp_pc_dependency.erb
+$(srcs_vpath)vm_insn_functions.inc: $(tooldir)/ruby_vm/views/vm_insn_functions.inc.erb $(inc_common_headers)
 $(srcs_vpath)vmtc.inc: $(tooldir)/ruby_vm/views/vmtc.inc.erb $(inc_common_headers)
 $(srcs_vpath)vm.inc: $(tooldir)/ruby_vm/views/vm.inc.erb $(inc_common_headers) \
   $(tooldir)/ruby_vm/views/_insn_entry.erb $(tooldir)/ruby_vm/views/_trace_instruction.erb
@@ -15592,6 +15593,7 @@ vm.$(OBJEXT): {$(VPATH)}vm_exec.c
 vm.$(OBJEXT): {$(VPATH)}vm_exec.h
 vm.$(OBJEXT): {$(VPATH)}vm_insnhelper.c
 vm.$(OBJEXT): {$(VPATH)}vm_insnhelper.h
+vm.$(OBJEXT): {$(VPATH)}vm_insn_functions.inc
 vm.$(OBJEXT): {$(VPATH)}vm_method.c
 vm.$(OBJEXT): {$(VPATH)}vm_opts.h
 vm.$(OBJEXT): {$(VPATH)}vm_sync.h

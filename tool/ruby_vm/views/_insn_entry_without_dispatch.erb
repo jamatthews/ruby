@@ -1,0 +1,67 @@
+%# -*- C -*-
+%# Copyright (c) 2017 Urabe, Shyouhei.  All rights reserved.
+%#
+%# This file is a part of  the programming language Ruby.  Permission is hereby
+%# granted, to either  redistribute and/or modify this file,  provided that the
+%# conditions mentioned  in the  file COPYING  are met.   Consult the  file for
+%# details.
+%;
+% body = render_c_expr(insn.expr).gsub(/^#/, '#   ')
+
+/* insn <%= insn.pretty_name + '_without_dispatch' %> */
+rb_control_frame_t * <%= insn.name + '_without_dispatch' %>(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp)
+{
+    const VALUE *reg_pc = reg_cfp->pc;
+    /* ###  Declare and assign variables. ### */
+% insn.preamble.each do |konst|
+<%= render_c_expr konst -%>
+% end
+%
+% insn.opes.each_with_index do |ope, i|
+    <%= ope[:decl] %> = (<%= ope[:type] %>)GET_OPERAND(<%= i + 1 %>);
+% end
+#   define INSN_ATTR(x) <%= insn.call_attribute(' ## x ## ') %>
+    bool leaf = INSN_ATTR(leaf);
+% insn.pops.reverse_each.with_index.reverse_each do |pop, i|
+    <%= pop[:decl] %> = <%= insn.cast_from_VALUE pop, "TOPN(#{i})"%>;
+% end
+%
+% insn.rets.each do |ret|
+%   next if insn.has_ope?(ret) or insn.has_pop?(ret)
+    <%= ret[:decl] %>;
+% end
+
+    /* ### Instruction preambles. ### */
+    if (! leaf) ADD_PC(INSN_ATTR(width));
+% if insn.handles_sp?
+    POPN(INSN_ATTR(popn));
+% end
+<%= insn.handle_canary "SETUP_CANARY(leaf)" -%>
+% unless body.empty?
+
+    /* ### Here we do the instruction body. ### */
+%#  NAME_OF_CURRENT_INSN is used in vm_exec.h
+#   define NAME_OF_CURRENT_INSN <%= insn.name %>
+<%= body -%>
+#   undef NAME_OF_CURRENT_INSN
+% end
+
+    /* ### Instruction trailers. ### */
+    CHECK_VM_STACK_OVERFLOW_FOR_INSN(VM_REG_CFP, INSN_ATTR(retn));
+<%= insn.handle_canary "CHECK_CANARY(leaf, INSN_ATTR(bin))" -%>
+% if insn.handles_sp?
+%   insn.rets.reverse_each do |ret|
+    PUSH(<%= insn.cast_to_VALUE ret %>);
+%   end
+% else
+    INC_SP(INSN_ATTR(sp_inc));
+%   insn.rets.reverse_each.with_index do |ret, i|
+    TOPN(<%= i %>) = <%= insn.cast_to_VALUE ret %>;
+    VM_ASSERT(!RB_TYPE_P(TOPN(<%= i %>), T_NONE));
+    VM_ASSERT(!RB_TYPE_P(TOPN(<%= i %>), T_MOVED));
+%   end
+% end
+    if (leaf) ADD_PC(INSN_ATTR(width));
+#   undef INSN_ATTR
+    return reg_cfp;
+}

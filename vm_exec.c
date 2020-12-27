@@ -192,3 +192,5 @@ vm_exec_core(rb_execution_context_t *ec, VALUE initial)
     }
 }
 #endif
+
+#include "vm_insn_functions.inc"

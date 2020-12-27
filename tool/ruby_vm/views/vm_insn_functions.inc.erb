@@ -1,0 +1,24 @@
+/* -*- C -*- */
+
+%# Copyright (c) 2017 Matthews, Jacob.  All rights reserved.
+%#
+%# This file is a part of  the programming language Ruby.  Permission is hereby
+%# granted, to either  redistribute and/or modify this file,  provided that the
+%# conditions mentioned  in the  file COPYING  are met.   Consult the  file for
+%# details.
+<%= render 'copyright' %>
+<%= render 'notice', locals: {
+    this_file: 'exposes each VM instruction as a function',
+    edit: __FILE__,
+} -%>
+
+#include "vm_insnhelper.h"
+
+#define DISPATCH_ORIGINAL_INSN(x) opt_send_without_block_without_dispatch(ec, reg_cfp);
+#define NEXT_INSN() return reg_cfp;
+% RubyVM::BareInstructions.to_a.each do |insn|
+<%= render 'insn_entry_without_dispatch', locals: { insn: insn } -%>
+% end
+
+#undef DISPATCH_ORIGINAL_INSN
+#undef NEXT_INSN
