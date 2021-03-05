@@ -95,6 +95,8 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(leave):
         jit_insn(insn, Dst);
         break;
+      case BIN(jump):
+        | jmp => body->iseq_encoded[pos+1]
       default:
         return NULL;
     }
