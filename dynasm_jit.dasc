@@ -123,12 +123,8 @@ static void jit_insn(int insn, dasm_State** Dst)
   | push rsp
   | push r12
   | push r13
-  | push r14
-  | push r15
   | mov64 rax, (uint64_t)(insn_functions_table[insn])
   | call rax
-  | pop r15
-  | pop r14
   | pop r13
   | pop r12
   | pop rsp
