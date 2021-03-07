@@ -91,6 +91,10 @@ jit_compile(rb_execution_context_t *ec)
     |=>pos:
     insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
     switch(insn){
+      case BIN(pop):
+      case BIN(leave):
+        jit_insn(insn, Dst);
+        break;
       case BIN(jump):
         | jmp => body->iseq_encoded[pos+1]
         break;
@@ -101,9 +105,8 @@ jit_compile(rb_execution_context_t *ec)
         | cmp r14, (pos + insn_len(insn))
         | jne => body->iseq_encoded[pos+1]
         break;
-
       default:
-        if (insn < 50) {
+        if (insn < 46) {
           jit_insn(insn, Dst);
         } else {
           //fprintf(stderr, "compilation terminated by unsupported instruction: %s\n", insn_name(insn));
