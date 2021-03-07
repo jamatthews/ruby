@@ -81,6 +81,8 @@ jit_compile(rb_execution_context_t *ec)
   dasm_setup(&d, actions);
   dasm_growpc(&d, body->iseq_size);
   |.code
+  |->exception_handler:
+    | ret
   |->start:
   unsigned int pos = 0;
   int insn;
@@ -89,26 +91,33 @@ jit_compile(rb_execution_context_t *ec)
     |=>pos:
     insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
     switch(insn){
-      case BIN(getlocal_WC_0):
-      case BIN(putnil):
-      case BIN(pop):
-      case BIN(leave):
-        jit_insn(insn, Dst);
-        break;
       case BIN(jump):
         | jmp => body->iseq_encoded[pos+1]
+        break;
+      case BIN(branchif):
+      case BIN(branchunless):
+      case BIN(branchnil):
+        jit_insn(insn, Dst);
+        | cmp r14, (pos + insn_len(insn))
+        | jne => body->iseq_encoded[pos+1]
+        break;
+
       default:
-        return NULL;
+        if (insn < 50) {
+          jit_insn(insn, Dst);
+        } else {
+          //fprintf(stderr, "compilation terminated by unsupported instruction: %s\n", insn_name(insn));
+          return NULL;
+        }
     }
     pos += insn_len(insn);
   }
-  |ret
+  | ret
   pos = 0;
   while (pos < body->iseq_size) {
     insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
     pos += insn_len(insn);
   }
-  fprintf(stderr, "\n");
   link_and_encode(&d);
   dasm_free(&d);
   return (dynamic_assembeled_function) labels[lbl_start];
@@ -132,4 +141,6 @@ static void jit_insn(int insn, dasm_State** Dst)
   | pop rdi
   | pop rbp
   | pop rbx
+  | cmp rax, 0
+  | je ->exception_handler
 }
