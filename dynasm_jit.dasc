@@ -105,8 +105,17 @@ jit_compile(rb_execution_context_t *ec)
         | cmp r14, (pos + insn_len(insn))
         | jne => body->iseq_encoded[pos+1]
         break;
+      case BIN(defineclass): // need to investigate why this causes an error and the debug output can't even print
+      case BIN(send): //stack consistency error
+      case BIN(opt_send_without_block): //stack consistency error
+      case BIN(invokesuper): //stack consistency error
+      case BIN(invokeblock): //stack consistency error
+      case BIN(throw): //segfault
+      case BIN(opt_case_dispatch): //need to build a lookup table for jump
+      case BIN(opt_getinlinecache): //need to build a lookup table for jump
+        return NULL;
       default:
-        if (insn < 46) {
+        if (insn < 75) {
           jit_insn(insn, Dst);
         } else {
           //fprintf(stderr, "compilation terminated by unsupported instruction: %s\n", insn_name(insn));
