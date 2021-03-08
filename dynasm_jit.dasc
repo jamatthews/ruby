@@ -114,14 +114,18 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(opt_case_dispatch): //need to build a lookup table for jump
       case BIN(opt_getinlinecache): // handling like a branch didn't work
       case BIN(opt_ltlt): // no idea
+      case BIN(opt_regexpmatch2):
+      case BIN(invokebuiltin):
+      case BIN(opt_invokebuiltin_delegate):
+      case BIN(opt_invokebuiltin_delegate_leave):
+      case BIN(getlocal_WC_0):
+      case BIN(getlocal_WC_1):
+      case BIN(setlocal_WC_0):
+      case BIN(setlocal_WC_1):
+        //fprintf(stderr, "compilation terminated by unsupported instruction: %s\n", insn_name(insn));
         return NULL;
       default:
-        if (insn < 90) {
-          jit_insn(insn, Dst);
-        } else {
-          //fprintf(stderr, "compilation terminated by unsupported instruction: %s\n", insn_name(insn));
-          return NULL;
-        }
+        jit_insn(insn, Dst);
     }
     pos += insn_len(insn);
   }
