@@ -112,7 +112,7 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(invokeblock): //stack consistency error
       case BIN(throw): //segfault
       case BIN(opt_case_dispatch): //need to build a lookup table for jump
-      case BIN(opt_getinlinecache): //need to build a lookup table for jump
+      case BIN(opt_getinlinecache): // handling like a branch didn't work
         return NULL;
       default:
         if (insn < 75) {
