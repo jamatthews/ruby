@@ -113,9 +113,10 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(throw): //segfault
       case BIN(opt_case_dispatch): //need to build a lookup table for jump
       case BIN(opt_getinlinecache): // handling like a branch didn't work
+      case BIN(opt_ltlt): // no idea
         return NULL;
       default:
-        if (insn < 75) {
+        if (insn < 90) {
           jit_insn(insn, Dst);
         } else {
           //fprintf(stderr, "compilation terminated by unsupported instruction: %s\n", insn_name(insn));
