@@ -102,7 +102,7 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(branchunless):
       case BIN(branchnil):
       case BIN(defineclass): // need to investigate why this causes an error and the debug output can't even print
-      case BIN(send): //stack consistency error
+      //case BIN(send): //stack consistency error
       case BIN(opt_send_without_block): //stack consistency error
       case BIN(invokesuper): //stack consistency error
       case BIN(invokeblock): //stack consistency error
@@ -121,6 +121,15 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(opt_aset):
         //fprintf(stderr, "compilation terminated by unsupported instruction: %s\n", insn_name(insn));
         return NULL;
+      case BIN(leave):
+      case BIN(getlocal_WC_0):
+      case BIN(getlocal_WC_1):
+      case BIN(setlocal_WC_0):
+      case BIN(setlocal_WC_1):
+      case BIN(putobject_INT2FIX_0_):
+      case BIN(putobject_INT2FIX_1_):
+        jit_insn(insn, Dst);
+        break;
       default:
         jit_insn(insn, Dst);
     }
