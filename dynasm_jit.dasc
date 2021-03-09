@@ -91,9 +91,9 @@ jit_compile(rb_execution_context_t *ec)
     |=>pos:
     insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
     switch(insn){
-      // case BIN(jump): //this definitely fails test_jump unfortauntely
-      //   | jmp => body->iseq_encoded[pos+1]
-      //   break;
+      case BIN(jump): //this definitely fails test_jump unfortauntely
+        | jmp => body->iseq_encoded[pos+1]
+        break;
       // case BIN(branchif):
       // case BIN(branchunless):
       // case BIN(branchnil):
@@ -114,7 +114,6 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(invokebuiltin):
       case BIN(opt_invokebuiltin_delegate):
       case BIN(opt_invokebuiltin_delegate_leave):
-      case BIN(jump):
       case BIN(branchif):
       case BIN(branchunless):
       case BIN(branchnil):
