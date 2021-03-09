@@ -94,13 +94,13 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(jump): //this definitely fails test_jump unfortauntely
         | jmp => body->iseq_encoded[pos+1]
         break;
-      // case BIN(branchif):
-      // case BIN(branchunless):
-      // case BIN(branchnil):
-      //   jit_insn(insn, Dst);
-      //   | cmp r14, (pos + insn_len(insn))
-      //   | jne => body->iseq_encoded[pos+1]
-      //   break;
+      case BIN(branchif):
+        jit_insn(insn, Dst);
+        | cmp r14, (pos + insn_len(insn))
+        | jne => body->iseq_encoded[pos+1]
+        break;
+      case BIN(branchunless):
+      case BIN(branchnil):
       case BIN(defineclass): // need to investigate why this causes an error and the debug output can't even print
       case BIN(send): //stack consistency error
       case BIN(opt_send_without_block): //stack consistency error
@@ -114,9 +114,6 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(invokebuiltin):
       case BIN(opt_invokebuiltin_delegate):
       case BIN(opt_invokebuiltin_delegate_leave):
-      case BIN(branchif):
-      case BIN(branchunless):
-      case BIN(branchnil):
       case BIN(opt_div):
       case BIN(opt_mod):
       case BIN(opt_and):
