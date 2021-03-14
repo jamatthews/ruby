@@ -21,7 +21,7 @@
 #include "insns_info.inc"
 
 typedef rb_control_frame_t* (*insn_function)(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp);
-typedef VALUE (*dynamic_assembeled_function)(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp);
+typedef rb_control_frame_t* (*dynamic_assembeled_function)(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp);
 
 static dynamic_assembeled_function jit_compile(rb_execution_context_t *ec);
 static insn_function* insn_functions_table;
@@ -41,9 +41,10 @@ static void* link_and_encode(dasm_State** d)
 VALUE dynasm_jit_exec(rb_execution_context_t *ec)
 {
   rb_thread_t *th = rb_ec_thread_ptr(ec);
+  rb_control_frame_t *reg_cfp = ec->cfp;
   dynamic_assembeled_function jit_function = jit_compile(ec);
   if(jit_function) {
-    jit_function(ec, ec->cfp);
+    reg_cfp = jit_function(ec, reg_cfp);
     if (th->retval != Qundef) {
       VALUE ret = th->retval;
       th->retval = Qundef;
