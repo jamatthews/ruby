@@ -80,7 +80,7 @@ jit_compile(rb_execution_context_t *ec)
   dasm_setupglobal(&d, labels, lbl__MAX);
   |.actionlist actions
   dasm_setup(&d, actions);
-  dasm_growpc(&d, body->iseq_size);
+  dasm_growpc(&d, body->iseq_size * 1000);
   |.code
   |->exception_handler:
     | ret
@@ -92,16 +92,23 @@ jit_compile(rb_execution_context_t *ec)
     |=>pos:
     insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
     switch(insn){
+      case BIN(leave):
+        jit_insn(insn, Dst);
+        | ret
+        break;
       case BIN(jump):
-        | jmp => body->iseq_encoded[pos+1]
+        | jmp => pos + body->iseq_encoded[pos+1] // current_pc + offset argument
         break;
       case BIN(branchif):
-        jit_insn(insn, Dst);
-        | cmp r14, (pos + insn_len(insn))
-        | jne => body->iseq_encoded[pos+1]
-        break;
       case BIN(branchunless):
       case BIN(branchnil):
+        jit_insn(insn, Dst);
+        | mov rcx, [rax]
+        | cmp rcx, (body->iseq_encoded + pos + body->iseq_encoded[pos+1])
+        | je => pos + body->iseq_encoded[pos+1] // current_pc + offset argument
+        break;
+      case BIN(getinstancevariable): //no idea about these two
+      case BIN(setinstancevariable):
       case BIN(defineclass): // need to investigate why this causes an error and the debug output can't even print
       case BIN(send): //stack consistency error
       case BIN(opt_send_without_block): //stack consistency error
@@ -110,11 +117,14 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(throw): //segfault
       case BIN(opt_case_dispatch): //need to build a lookup table for jump
       case BIN(opt_getinlinecache): // handling like a branch didn't work
+      case BIN(opt_eq): // no idea
       case BIN(opt_ltlt): // no idea
       case BIN(opt_regexpmatch2):
       case BIN(invokebuiltin):
       case BIN(opt_invokebuiltin_delegate):
       case BIN(opt_invokebuiltin_delegate_leave):
+      case BIN(opt_minus):
+      case BIN(opt_plus):
       case BIN(opt_div):
       case BIN(opt_mod):
       case BIN(opt_and):
@@ -122,7 +132,6 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(opt_aset):
         //fprintf(stderr, "compilation terminated by unsupported instruction: %s\n", insn_name(insn));
         return NULL;
-      case BIN(leave):
       case BIN(getlocal_WC_0):
       case BIN(getlocal_WC_1):
       case BIN(setlocal_WC_0):
@@ -136,10 +145,11 @@ jit_compile(rb_execution_context_t *ec)
     }
     pos += insn_len(insn);
   }
-  | ret
   pos = 0;
+  //fprintf(stderr, "compiling: \n");
   while (pos < body->iseq_size) {
     insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
+    //fprintf(stderr, "%s\n", insn_name(insn));
     pos += insn_len(insn);
   }
   link_and_encode(&d);
@@ -149,22 +159,15 @@ jit_compile(rb_execution_context_t *ec)
 
 static void jit_insn(int insn, dasm_State** Dst)
 {
-  | push rbx
-  | push rbp
   | push rdi
   | push rsi
   | push rsp
-  | push r12
-  | push r13
   | mov64 rax, (uint64_t)(insn_functions_table[insn])
   | call rax
-  | pop r13
-  | pop r12
   | pop rsp
   | pop rsi
   | pop rdi
-  | pop rbp
-  | pop rbx
   | cmp rax, 0
   | je ->exception_handler
+  | mov rsi, rax
 }
