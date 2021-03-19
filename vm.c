@@ -3079,9 +3079,7 @@ th_init(rb_thread_t *th, VALUE self)
     th->thread_id_string[0] = '\0';
 #endif
 
-#if OPT_CALL_THREADED_CODE
     th->retval = Qundef;
-#endif
     th->name = Qnil;
     th->report_on_exception = th->vm->thread_report_on_exception;
     th->ext_config.ractor_safe = true;
