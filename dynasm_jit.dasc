@@ -66,10 +66,11 @@ Init_DynasmVm(void)
   insn_functions_table = (insn_function*) rb_vm_get_insn_functions_table();
 }
 
-// void debug(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp)
-// {
-//   fprintf(stderr, "insn: %s, ec: %p, ec_cfp: %p, reg_cfp: %p, sp: %p, pc: %p\n", insn_name(rb_vm_insn_addr2insn(*reg_cfp->pc)), ec, ec->cfp, reg_cfp, reg_cfp->sp, reg_cfp->pc);
-// }
+void debug(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp)
+{
+  int insn = rb_vm_insn_addr2insn(*reg_cfp->pc);
+  //fprintf(stderr, "insn: %s, ec: %p, ec_cfp: %p, reg_cfp: %p, sp: %p, pc: %p\n", insn_name(insn), ec, ec->cfp, reg_cfp, reg_cfp->sp, reg_cfp->pc);
+}
 
 static dynamic_assembeled_function
 jit_compile(rb_execution_context_t *ec)
@@ -132,7 +133,6 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(opt_plus):
       case BIN(opt_div):
       case BIN(opt_mod):
-      case BIN(opt_and):
       case BIN(opt_aref):
       case BIN(opt_aset):
         //fprintf(stderr, "compilation terminated by unsupported instruction: %s\n", insn_name(insn));
@@ -162,25 +162,33 @@ jit_compile(rb_execution_context_t *ec)
   return (dynamic_assembeled_function) labels[lbl_start];
 }
 
-static void jit_insn(int insn, dasm_State** Dst)
-{
-  // | push rdi
-  // | push rsi
-  // | push rsp
-  // | mov64 rax, (uint64_t)(debug)
-  // | call rax
-  // | pop rsp
-  // | pop rsi
-  // | pop rdi
+// the two arg passing registeres get call clobbered
+static void precall(dasm_State** Dst){
   | push rdi
   | push rsi
   | push rsp
-  | mov64 rax, (uint64_t)(insn_functions_table[insn])
-  | call rax
+  //IDK why but this seems to be on 16 byte alignment with only 3 registers pushed
+}
+
+// the two arg passing registeres get call clobbered
+static void postcall(dasm_State** Dst){
+  //IDK why but this seems to be on 16 byte alignment with only 3 registers pushed
   | pop rsp
   | pop rsi
   | pop rdi
+}
+
+
+
+static void jit_insn(int insn, dasm_State** Dst)
+{
+  precall(Dst);
+  // | mov64 rax, (uint64_t)(debug)
+  // | call rax
+  | mov64 rax, (uint64_t)(insn_functions_table[insn])
+  | call rax
+  postcall(Dst);
   | cmp rax, 0
-  | je ->exception_handler
-  | mov rsi, rax
+  | je ->exception_handler //If an instruction raises an exception (like throw) it returns 0
+  | mov rsi, rax // Normal case. An instruction returns the (potentially updated) control frame pointer.
 }
