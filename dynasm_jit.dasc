@@ -76,9 +76,32 @@ void debug(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp, int insn_con
   int insn_vpc = rb_vm_insn_addr2insn(*reg_cfp->pc);
   DJ_ASSERT(insn_vpc == insn_context_thread);
 
-#if DJ_CHECK_MODE > 1
+#if DJ_CHECK_MODE >= 2
   fprintf(stderr, "insn_context_thread: %s insn_vpc: %s, ec: %p, ec_cfp: %p, reg_cfp: %p, sp: %p, pc: %p\n", insn_name(insn_context_thread), insn_name(insn_vpc), ec, ec->cfp, reg_cfp, reg_cfp->sp, reg_cfp->pc);
 #endif
+}
+
+void print_compiled_iseq(rb_execution_context_t *ec){
+  const struct rb_iseq_constant_body *body = ec->cfp->iseq->body;
+  unsigned int pos = 0;
+  int insn;
+  fprintf(stderr, "compiled: \n");
+
+  while (pos < body->iseq_size) {
+    insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
+    fprintf(stderr, "%s %p\n", insn_name(insn), body->iseq_encoded + pos);
+    switch(insn) {
+      case BIN(jump):
+        fprintf(stderr, "  target %p\n", body->iseq_encoded + pos + insn_len(insn) + body->iseq_encoded[pos+1]);
+        break;
+      case BIN(branchunless):
+        fprintf(stderr, "  fallthrough %p\n",body->iseq_encoded + pos + insn_len(insn));
+        fprintf(stderr, "  target %p\n", body->iseq_encoded + pos + insn_len(insn) + body->iseq_encoded[pos+1]);
+        break;
+
+    }
+    pos += insn_len(insn);
+  }
 }
 
 static dynamic_assembeled_function
@@ -99,9 +122,13 @@ jit_compile(rb_execution_context_t *ec)
   |.code
   |->exception_handler:
     | ret
-  |->start:
+  |->main:
   unsigned int pos = 0;
   int insn;
+
+  if(body->param.flags.has_opt){
+    return NULL; //handle this with a jump table for starting PC later
+  }
 
   while (pos < body->iseq_size) {
     |=>pos:
@@ -124,8 +151,6 @@ jit_compile(rb_execution_context_t *ec)
         | cmp rcx, [rax]
         | jne => pos + body->iseq_encoded[pos+1] + insn_len(insn) // current_pc + offset argument
         break;
-      case BIN(getinstancevariable): //no idea about these two
-      case BIN(setinstancevariable):
       case BIN(defineclass): // need to investigate why this causes an error and the debug output can't even print
       case BIN(send): //stack consistency error
       case BIN(opt_send_without_block): //stack consistency error
@@ -158,28 +183,12 @@ jit_compile(rb_execution_context_t *ec)
     }
     pos += insn_len(insn);
   }
-  pos = 0;
-#if DJ_CHECK_MODE > 0
-  fprintf(stderr, "compiled: \n");
-  while (pos < body->iseq_size) {
-    insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
-    fprintf(stderr, "%s %p\n", insn_name(insn), body->iseq_encoded + pos);
-    switch(insn) {
-      case BIN(jump):
-        fprintf(stderr, "  target %p\n", body->iseq_encoded + pos + insn_len(insn) + body->iseq_encoded[pos+1]);
-        break;
-      case BIN(branchunless):
-        fprintf(stderr, "  fallthrough %p\n",body->iseq_encoded + pos + insn_len(insn));
-        fprintf(stderr, "  target %p\n", body->iseq_encoded + pos + insn_len(insn) + body->iseq_encoded[pos+1]);
-        break;
-
-    }
-    pos += insn_len(insn);
-  }
+#if DJ_CHECK_MODE >= 2
+  print_compiled_iseq(ec, reg_cfp);
 #endif
   link_and_encode(&d);
   dasm_free(&d);
-  return (dynamic_assembeled_function) labels[lbl_start];
+  return (dynamic_assembeled_function) labels[lbl_main];
 }
 
 // the two arg passing registeres get call clobbered
@@ -198,20 +207,28 @@ static void postcall(dasm_State** Dst){
   | pop rdi
 }
 
-static void jit_insn(int insn, dasm_State** Dst)
-{
-#if DJ_CHECK_MODE
+static void pre_insn_debug(int insn, dasm_State** Dst){
   precall(Dst);
   | mov64 rdx, (uint64_t)(insn)
   | mov64 rax, (uint64_t)(debug)
   | call rax
   postcall(Dst);
+}
+
+static void check_for_exception(dasm_State** Dst){
+  | cmp rax, 0
+  | je ->exception_handler //If an instruction raises an exception (like throw) it returns 0
+  | mov rsi, rax // Normal case. An instruction returns the (potentially updated) control frame pointer.
+}
+
+static void jit_insn(int insn, dasm_State** Dst)
+{
+#if DJ_CHECK_MODE
+  pre_insn_debug(insn, Dst);
 #endif
   precall(Dst);
   | mov64 rax, (uint64_t)(insn_functions_table[insn])
   | call rax
   postcall(Dst);
-  | cmp rax, 0
-  | je ->exception_handler //If an instruction raises an exception (like throw) it returns 0
-  | mov rsi, rax // Normal case. An instruction returns the (potentially updated) control frame pointer.
+  check_for_exception(Dst);
 }
