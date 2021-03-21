@@ -20,6 +20,11 @@
 #include "insns.inc"
 #include "insns_info.inc"
 
+#ifndef DJ_CHECK_MODE
+#define DJ_CHECK_MODE 0
+#endif
+#define DJ_ASSERT(expr) RUBY_ASSERT_MESG_WHEN(DJ_CHECK_MODE > 0, expr, #expr)
+
 typedef rb_control_frame_t* (*insn_function)(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp);
 typedef rb_control_frame_t* (*dynamic_assembeled_function)(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp);
 
@@ -66,18 +71,15 @@ Init_DynasmVm(void)
   insn_functions_table = (insn_function*) rb_vm_get_insn_functions_table();
 }
 
-// void debug(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp, int insn_calling)
-// {
-//   int insn = rb_vm_insn_addr2insn(*reg_cfp->pc);
-//   if(insn != insn_calling) {
-//     fprintf(stderr, "insn_calling: %s insn vpc: %s, ec: %p, ec_cfp: %p, reg_cfp: %p, sp: %p, pc: %p\n", insn_name(insn_calling), insn_name(insn), ec, ec->cfp, reg_cfp, reg_cfp->sp, reg_cfp->pc);
-//   }
-// }
+void debug(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp, int insn_context_thread)
+{
+  int insn_vpc = rb_vm_insn_addr2insn(*reg_cfp->pc);
+  DJ_ASSERT(insn_vpc == insn_context_thread);
 
-// void dump_rdi(VALUE rdi)
-// {
-//   fprintf(stderr, "rdi: %p\n", rdi);
-// }
+#if DJ_CHECK_MODE > 1
+  fprintf(stderr, "insn_context_thread: %s insn_vpc: %s, ec: %p, ec_cfp: %p, reg_cfp: %p, sp: %p, pc: %p\n", insn_name(insn_context_thread), insn_name(insn_vpc), ec, ec->cfp, reg_cfp, reg_cfp->sp, reg_cfp->pc);
+#endif
+}
 
 static dynamic_assembeled_function
 jit_compile(rb_execution_context_t *ec)
@@ -111,7 +113,7 @@ jit_compile(rb_execution_context_t *ec)
         break;
       case BIN(jump):
         jit_insn(insn, Dst);
-        | jmp => pos + body->iseq_encoded[pos+1] + insn_len(insn) // current_pc + offset argument + fake dispatch
+        | jmp => (pos + body->iseq_encoded[pos+1] + insn_len(insn)) // current_pc + offset argument + fake dispatch
         break;
       case BIN(branchif):
       case BIN(branchunless):
@@ -156,19 +158,25 @@ jit_compile(rb_execution_context_t *ec)
     }
     pos += insn_len(insn);
   }
-  // pos = 0;
-  // fprintf(stderr, "compiled: \n");
-  // while (pos < body->iseq_size) {
-  //   insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
-  //   switch(insn) {
-  //     case BIN(branchunless):
-  //       fprintf(stderr, "%s next insn %p\n", insn_name(insn), body->iseq_encoded + pos + insn_len(insn));
-  //       break;
-  //     default:
-  //       fprintf(stderr, "%s\n", insn_name(insn));
-  //   }
-  //   pos += insn_len(insn);
-  // }
+  pos = 0;
+#if DJ_CHECK_MODE > 0
+  fprintf(stderr, "compiled: \n");
+  while (pos < body->iseq_size) {
+    insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
+    fprintf(stderr, "%s %p\n", insn_name(insn), body->iseq_encoded + pos);
+    switch(insn) {
+      case BIN(jump):
+        fprintf(stderr, "  target %p\n", body->iseq_encoded + pos + insn_len(insn) + body->iseq_encoded[pos+1]);
+        break;
+      case BIN(branchunless):
+        fprintf(stderr, "  fallthrough %p\n",body->iseq_encoded + pos + insn_len(insn));
+        fprintf(stderr, "  target %p\n", body->iseq_encoded + pos + insn_len(insn) + body->iseq_encoded[pos+1]);
+        break;
+
+    }
+    pos += insn_len(insn);
+  }
+#endif
   link_and_encode(&d);
   dasm_free(&d);
   return (dynamic_assembeled_function) labels[lbl_start];
@@ -192,11 +200,13 @@ static void postcall(dasm_State** Dst){
 
 static void jit_insn(int insn, dasm_State** Dst)
 {
-  // precall(Dst);
-  // | mov64 rdx, (uint64_t)(insn)
-  // | mov64 rax, (uint64_t)(debug)
-  // | call rax
-  // postcall(Dst);
+#if DJ_CHECK_MODE
+  precall(Dst);
+  | mov64 rdx, (uint64_t)(insn)
+  | mov64 rax, (uint64_t)(debug)
+  | call rax
+  postcall(Dst);
+#endif
   precall(Dst);
   | mov64 rax, (uint64_t)(insn_functions_table[insn])
   | call rax
