@@ -66,11 +66,18 @@ Init_DynasmVm(void)
   insn_functions_table = (insn_function*) rb_vm_get_insn_functions_table();
 }
 
-void debug(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp)
-{
-  int insn = rb_vm_insn_addr2insn(*reg_cfp->pc);
-  //fprintf(stderr, "insn: %s, ec: %p, ec_cfp: %p, reg_cfp: %p, sp: %p, pc: %p\n", insn_name(insn), ec, ec->cfp, reg_cfp, reg_cfp->sp, reg_cfp->pc);
-}
+// void debug(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp, int insn_calling)
+// {
+//   int insn = rb_vm_insn_addr2insn(*reg_cfp->pc);
+//   if(insn != insn_calling) {
+//     fprintf(stderr, "insn_calling: %s insn vpc: %s, ec: %p, ec_cfp: %p, reg_cfp: %p, sp: %p, pc: %p\n", insn_name(insn_calling), insn_name(insn), ec, ec->cfp, reg_cfp, reg_cfp->sp, reg_cfp->pc);
+//   }
+// }
+
+// void dump_rdi(VALUE rdi)
+// {
+//   fprintf(stderr, "rdi: %p\n", rdi);
+// }
 
 static dynamic_assembeled_function
 jit_compile(rb_execution_context_t *ec)
@@ -86,7 +93,7 @@ jit_compile(rb_execution_context_t *ec)
   dasm_setupglobal(&d, labels, lbl__MAX);
   |.actionlist actions
   dasm_setup(&d, actions);
-  dasm_growpc(&d, body->iseq_size * 1000);
+  dasm_growpc(&d, body->iseq_size);
   |.code
   |->exception_handler:
     | ret
@@ -103,15 +110,17 @@ jit_compile(rb_execution_context_t *ec)
         | ret
         break;
       case BIN(jump):
-        | jmp => pos + body->iseq_encoded[pos+1] // current_pc + offset argument
+        jit_insn(insn, Dst);
+        | jmp => pos + body->iseq_encoded[pos+1] + insn_len(insn) // current_pc + offset argument + fake dispatch
         break;
       case BIN(branchif):
       case BIN(branchunless):
       case BIN(branchnil):
         jit_insn(insn, Dst);
-        | mov rcx, [rax]
-        | cmp rcx, (body->iseq_encoded + pos + body->iseq_encoded[pos+1])
-        | je => pos + body->iseq_encoded[pos+1] // current_pc + offset argument
+
+        | mov64 rcx, (uint64_t)(body->iseq_encoded + pos + insn_len(insn))
+        | cmp rcx, [rax]
+        | jne => pos + body->iseq_encoded[pos+1] + insn_len(insn) // current_pc + offset argument
         break;
       case BIN(getinstancevariable): //no idea about these two
       case BIN(setinstancevariable):
@@ -129,8 +138,8 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(invokebuiltin):
       case BIN(opt_invokebuiltin_delegate):
       case BIN(opt_invokebuiltin_delegate_leave):
-      case BIN(opt_minus):
-      case BIN(opt_plus):
+      // case BIN(opt_minus):
+      // case BIN(opt_plus):
       case BIN(opt_div):
       case BIN(opt_mod):
       case BIN(opt_aref):
@@ -150,13 +159,19 @@ jit_compile(rb_execution_context_t *ec)
     }
     pos += insn_len(insn);
   }
-  pos = 0;
-  //fprintf(stderr, "compiling: \n");
-  while (pos < body->iseq_size) {
-    insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
-    //fprintf(stderr, "%s\n", insn_name(insn));
-    pos += insn_len(insn);
-  }
+  // pos = 0;
+  // fprintf(stderr, "compiled: \n");
+  // while (pos < body->iseq_size) {
+  //   insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
+  //   switch(insn) {
+  //     case BIN(branchunless):
+  //       fprintf(stderr, "%s next insn %p\n", insn_name(insn), body->iseq_encoded + pos + insn_len(insn));
+  //       break;
+  //     default:
+  //       fprintf(stderr, "%s\n", insn_name(insn));
+  //   }
+  //   pos += insn_len(insn);
+  // }
   link_and_encode(&d);
   dasm_free(&d);
   return (dynamic_assembeled_function) labels[lbl_start];
@@ -178,13 +193,14 @@ static void postcall(dasm_State** Dst){
   | pop rdi
 }
 
-
-
 static void jit_insn(int insn, dasm_State** Dst)
 {
-  precall(Dst);
+  // precall(Dst);
+  // | mov64 rdx, (uint64_t)(insn)
   // | mov64 rax, (uint64_t)(debug)
   // | call rax
+  // postcall(Dst);
+  precall(Dst);
   | mov64 rax, (uint64_t)(insn_functions_table[insn])
   | call rax
   postcall(Dst);
