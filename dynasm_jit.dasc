@@ -138,9 +138,6 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(invokebuiltin):
       case BIN(opt_invokebuiltin_delegate):
       case BIN(opt_invokebuiltin_delegate_leave):
-      // case BIN(opt_minus):
-      // case BIN(opt_plus):
-      case BIN(opt_div):
       case BIN(opt_mod):
       case BIN(opt_aref):
       case BIN(opt_aset):
