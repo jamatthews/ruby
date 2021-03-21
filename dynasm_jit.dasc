@@ -160,8 +160,6 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(opt_getinlinecache): // handling like a branch didn't work
       case BIN(opt_ltlt): // no idea
       case BIN(opt_regexpmatch2):
-      case BIN(opt_invokebuiltin_delegate):
-      case BIN(opt_invokebuiltin_delegate_leave):
       case BIN(opt_mod):
       case BIN(opt_aref):
       case BIN(opt_aset):
