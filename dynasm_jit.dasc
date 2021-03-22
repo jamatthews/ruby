@@ -158,13 +158,7 @@ jit_compile(rb_execution_context_t *ec)
         break;
       case BIN(defineclass): // need to investigate why this causes an error and the debug output can't even print
       case BIN(send): //stack consistency error
-      case BIN(invokesuper): //stack consistency error
       case BIN(opt_case_dispatch): //need to build a lookup table for jump
-      case BIN(opt_ltlt): // no idea
-      case BIN(opt_regexpmatch2):
-      case BIN(opt_mod):
-      case BIN(opt_aref):
-      case BIN(opt_aset):
 
         //fprintf(stderr, "compilation terminated by unsupported instruction: %s\n", insn_name(insn));
         return NULL;
