@@ -213,7 +213,7 @@ vm_exec_core(rb_execution_context_t *ec, VALUE initial)
 
 #pragma push_macro("DISPATCH_ORIGINAL_INSN(x)")
 #undef  DISPATCH_ORIGINAL_INSN
-#define DISPATCH_ORIGINAL_INSN(x) jit_insn_opt_send_without_block(ec, reg_cfp);
+#define DISPATCH_ORIGINAL_INSN(x) return jit_insn_opt_send_without_block(ec, reg_cfp);
 
 #pragma push_macro("END_INSN(x)")
 #undef  END_INSN
