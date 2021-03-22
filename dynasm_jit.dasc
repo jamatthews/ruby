@@ -21,7 +21,7 @@
 #include "insns_info.inc"
 
 #ifndef DJ_CHECK_MODE
-#define DJ_CHECK_MODE 0
+#define DJ_CHECK_MODE 1
 #endif
 #define DJ_ASSERT(expr) RUBY_ASSERT_MESG_WHEN(DJ_CHECK_MODE > 0, expr, #expr)
 
@@ -156,7 +156,6 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(send): //stack consistency error
       case BIN(opt_send_without_block): //stack consistency error
       case BIN(invokesuper): //stack consistency error
-      case BIN(invokeblock): //stack consistency error
       case BIN(opt_case_dispatch): //need to build a lookup table for jump
       case BIN(opt_ltlt): // no idea
       case BIN(opt_regexpmatch2):
@@ -171,7 +170,7 @@ jit_compile(rb_execution_context_t *ec)
     pos += insn_len(insn);
   }
 #if DJ_CHECK_MODE >= 2
-  print_compiled_iseq(ec, reg_cfp);
+  print_compiled_iseq(ec);
 #endif
   link_and_encode(&d);
   dasm_free(&d);
