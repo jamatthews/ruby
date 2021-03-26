@@ -21,7 +21,7 @@
 #include "insns_info.inc"
 
 #ifndef DJ_CHECK_MODE
-#define DJ_CHECK_MODE 1
+#define DJ_CHECK_MODE 0
 #endif
 #define DJ_ASSERT(expr) RUBY_ASSERT_MESG_WHEN(DJ_CHECK_MODE > 0, expr, #expr)
 
@@ -47,21 +47,27 @@ VALUE dynasm_jit_exec(rb_execution_context_t *ec)
 {
   rb_thread_t *th = rb_ec_thread_ptr(ec);
   rb_control_frame_t *reg_cfp = ec->cfp;
-  dynamic_assembeled_function jit_function = jit_compile(ec);
-  if(jit_function) {
-    reg_cfp = jit_function(ec, reg_cfp);
-    if (th->retval != Qundef) {
-      VALUE ret = th->retval;
-      th->retval = Qundef;
+  struct rb_iseq_constant_body *body = reg_cfp->iseq->body;
 
-      return ret;
-    } else {
-      VALUE err = ec->errinfo;
-      ec->errinfo = Qnil;
-      return err;
-    }
-  } else {
+  return Qundef;
+
+  if(body->dynasm_jit_func == NULL) {
+    body->dynasm_jit_func = jit_compile(ec);
+  }
+
+  if(body->dynasm_jit_func == NULL) {
     return Qundef;
+  }
+  reg_cfp = body->dynasm_jit_func(ec, reg_cfp);
+  if (th->retval != Qundef) {
+    VALUE ret = th->retval;
+    th->retval = Qundef;
+
+    return ret;
+  } else {
+    VALUE err = ec->errinfo;
+    ec->errinfo = Qnil;
+    return err;
   }
 }
 
@@ -206,7 +212,7 @@ static void check_for_exception(dasm_State** Dst){
 
 static void jit_insn(int insn, dasm_State** Dst)
 {
-#if DJ_CHECK_MODE
+#if DJ_CHECK_MODE > 0
   pre_insn_debug(insn, Dst);
 #endif
   precall(Dst);
