@@ -199,8 +199,7 @@ static void postcall(dasm_State** Dst){
 static void pre_insn_debug(int insn, dasm_State** Dst){
   precall(Dst);
   | mov64 rdx, (uint64_t)(insn)
-  | mov64 rax, (uint64_t)(debug)
-  | call rax
+  | call extern debug
   postcall(Dst);
 }
 
@@ -216,8 +215,7 @@ static void jit_insn(int insn, dasm_State** Dst)
   pre_insn_debug(insn, Dst);
 #endif
   precall(Dst);
-  | mov64 rax, (uint64_t)(insn_functions_table[insn])
-  | call rax
+  | call extern insn_functions_table[insn]
   postcall(Dst);
   check_for_exception(Dst);
 }
