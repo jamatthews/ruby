@@ -49,8 +49,6 @@ VALUE dynasm_jit_exec(rb_execution_context_t *ec)
   rb_control_frame_t *reg_cfp = ec->cfp;
   struct rb_iseq_constant_body *body = reg_cfp->iseq->body;
 
-  return Qundef;
-
   if(body->dynasm_jit_func == NULL) {
     body->dynasm_jit_func = jit_compile(ec);
   }
@@ -184,7 +182,6 @@ jit_compile(rb_execution_context_t *ec)
 static void precall(dasm_State** Dst){
   | push rdi
   | push rsi
-  | push rdi
   | push rsi
   //IDK why but this seems to be on 16 byte alignment with only 3 registers pushed
 }
@@ -193,7 +190,6 @@ static void precall(dasm_State** Dst){
 static void postcall(dasm_State** Dst){
   //IDK why but this seems to be on 16 byte alignment with only 3 registers pushed
   | pop rsi
-  | pop rdi
   | pop rsi
   | pop rdi
 }
