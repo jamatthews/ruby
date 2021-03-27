@@ -184,14 +184,16 @@ jit_compile(rb_execution_context_t *ec)
 static void precall(dasm_State** Dst){
   | push rdi
   | push rsi
-  | push rsp
+  | push rdi
+  | push rsi
   //IDK why but this seems to be on 16 byte alignment with only 3 registers pushed
 }
 
 // the two arg passing registeres get call clobbered
 static void postcall(dasm_State** Dst){
   //IDK why but this seems to be on 16 byte alignment with only 3 registers pushed
-  | pop rsp
+  | pop rsi
+  | pop rdi
   | pop rsi
   | pop rdi
 }
