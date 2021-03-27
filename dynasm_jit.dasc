@@ -21,7 +21,7 @@
 #include "insns_info.inc"
 
 #ifndef DJ_CHECK_MODE
-#define DJ_CHECK_MODE 0
+#define DJ_CHECK_MODE 1
 #endif
 #define DJ_ASSERT(expr) RUBY_ASSERT_MESG_WHEN(DJ_CHECK_MODE > 0, expr, #expr)
 
@@ -30,7 +30,7 @@ typedef rb_control_frame_t* (*dynamic_assembeled_function)(rb_execution_context_
 
 static dynamic_assembeled_function jit_compile(rb_execution_context_t *ec);
 static insn_function* insn_functions_table;
-static void jit_insn(int insn, dasm_State** Dst);
+static void emit_call_to_insn_function(int insn, dasm_State** Dst);
 
 static void* link_and_encode(dasm_State** d)
 {
@@ -77,7 +77,7 @@ Init_DynasmVm(void)
 
 void debug(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp, int insn_context_thread)
 {
-  int insn_vpc = rb_vm_insn_addr2insn(*reg_cfp->pc);
+  int insn_vpc = rb_vm_insn_addr2insn((void *) *reg_cfp->pc);
 #if DJ_CHECK_MODE >= 1
   if(insn_vpc != insn_context_thread)
     fprintf(stderr, "insn_context_thread: %s insn_vpc: %s, ec: %p, ec_cfp: %p, reg_cfp: %p, sp: %p, pc: %p\n", insn_name(insn_context_thread), insn_name(insn_vpc), ec, ec->cfp, reg_cfp, reg_cfp->sp, reg_cfp->pc);
@@ -143,18 +143,18 @@ jit_compile(rb_execution_context_t *ec)
     insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
     switch(insn){
       case BIN(leave):
-        jit_insn(insn, Dst);
+        emit_call_to_insn_function(insn, Dst);
         | ret
         break;
       case BIN(jump):
-        jit_insn(insn, Dst);
+        emit_call_to_insn_function(insn, Dst);
         | jmp => (pos + body->iseq_encoded[pos+1] + insn_len(insn)) // current_pc + offset argument + fake dispatch
         break;
       case BIN(branchif):
       case BIN(branchunless):
       case BIN(branchnil):
       case BIN(opt_getinlinecache):
-        jit_insn(insn, Dst);
+        emit_call_to_insn_function(insn, Dst);
 
         | mov64 rcx, (uint64_t)(body->iseq_encoded + pos + insn_len(insn))
         | cmp rcx, [rax]
@@ -166,7 +166,7 @@ jit_compile(rb_execution_context_t *ec)
         //fprintf(stderr, "compilation terminated by unsupported instruction: %s\n", insn_name(insn));
         return NULL;
       default:
-        jit_insn(insn, Dst);
+        emit_call_to_insn_function(insn, Dst);
     }
     pos += insn_len(insn);
   }
@@ -208,11 +208,11 @@ static void check_for_exception(dasm_State** Dst){
   | mov rsi, rax // Normal case. An instruction returns the (potentially updated) control frame pointer.
 }
 
-static void jit_insn(int insn, dasm_State** Dst)
+static void emit_call_to_insn_function(int insn, dasm_State** Dst)
 {
-#if DJ_CHECK_MODE > 0
-  pre_insn_debug(insn, Dst);
-#endif
+  if(DJ_CHECK_MODE > 0)
+    pre_insn_debug(insn, Dst);
+
   precall(Dst);
   | mov64 rax, (uint64_t)(insn_functions_table[insn])
   | call rax
