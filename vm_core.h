@@ -437,7 +437,7 @@ struct rb_iseq_constant_body {
     long unsigned total_calls; /* number of total calls with `mjit_exec()` */
     struct rb_mjit_unit *jit_unit;
 #endif
-    VALUE (*dynasm_jit_func)(struct rb_execution_context_struct *, struct rb_control_frame_struct *);
+    struct rb_execution_context_struct * (*dynasm_jit_func)(struct rb_execution_context_struct *, struct rb_control_frame_struct *);
 };
 
 /* T_IMEMO/iseq */

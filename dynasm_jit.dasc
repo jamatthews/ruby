@@ -160,7 +160,7 @@ jit_compile(rb_execution_context_t *ec)
         | cmp rcx, [rax]
         | jne => pos + body->iseq_encoded[pos+1] + insn_len(insn) // current_pc + offset argument
         break;
-      case BIN(defineclass): // need to investigate why this causes an error and the debug output can't even print
+      case BIN(defineclass): // defineclass pushes a frame and just startes executing a differen
       case BIN(opt_case_dispatch): //need to build a lookup table for jump
 
         //fprintf(stderr, "compilation terminated by unsupported instruction: %s\n", insn_name(insn));
