@@ -178,17 +178,13 @@ jit_compile(rb_execution_context_t *ec)
   return (dynamic_assembeled_function) labels[lbl_main];
 }
 
-// the two arg passing registeres get call clobbered
 static void precall(dasm_State** Dst){
   | push rdi
   | push rsi
   | push rsi
-  //IDK why but this seems to be on 16 byte alignment with only 3 registers pushed
 }
 
-// the two arg passing registeres get call clobbered
 static void postcall(dasm_State** Dst){
-  //IDK why but this seems to be on 16 byte alignment with only 3 registers pushed
   | pop rsi
   | pop rsi
   | pop rdi
@@ -212,10 +208,12 @@ static void emit_call_to_insn_function(int insn, dasm_State** Dst)
 {
   if(DJ_CHECK_MODE > 0)
     pre_insn_debug(insn, Dst);
-
+  // save first (ec) and second (cfp) arguments
   precall(Dst);
+  // call the VM implementation for this isntruction
   | mov64 rax, (uint64_t)(insn_functions_table[insn])
   | call rax
   postcall(Dst);
+  // save first (ec) and second (cfp) arguments
   check_for_exception(Dst);
 }
