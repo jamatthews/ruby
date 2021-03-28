@@ -147,7 +147,7 @@ jit_compile(rb_execution_context_t *ec)
         | ret
         break;
       case BIN(jump):
-        emit_call_to_insn_function(insn, Dst);
+        | add qword [rsi], 8 * (insn_len(insn) + body->iseq_encoded[pos+1]) //move vPC
         | jmp => (pos + body->iseq_encoded[pos+1] + insn_len(insn)) // current_pc + offset argument + fake dispatch
         break;
       case BIN(branchif):
