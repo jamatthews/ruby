@@ -28,12 +28,16 @@
 #define CFP_PC_OFFSET offsetof(rb_control_frame_t, pc)
 #define CFP_SP_OFFSET offsetof(rb_control_frame_t, sp)
 
+#define EC_IM_OFFSET offsetof(rb_execution_context_t, interrupt_mask)
+#define EC_IF_OFFSET offsetof(rb_execution_context_t, interrupt_flag)
+
 typedef rb_control_frame_t* (*insn_function)(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp);
 typedef rb_control_frame_t* (*dynamic_assembeled_function)(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp);
 
 static dynamic_assembeled_function jit_compile(rb_execution_context_t *ec);
 static insn_function* insn_functions_table;
 static void emit_call_to_insn_function(int insn, dasm_State** Dst);
+static void emit_interrupt_check(int insn, dasm_State** Dst);
 
 static void* link_and_encode(dasm_State** d)
 {
@@ -150,8 +154,15 @@ jit_compile(rb_execution_context_t *ec)
         | ret
         break;
       case BIN(jump):
-        emit_call_to_insn_function(insn, Dst); // need to check interrupts and conditionally call this
-        //| add qword [rsi], 8 * (insn_len(insn) + body->iseq_encoded[pos+1]) //move vPC
+        | mov rcx, [rdi+EC_IM_OFFSET]
+        | not rcx
+        | test rcx, [rdi+EC_IF_OFFSET]
+        | jz >1
+        emit_call_to_insn_function(insn, Dst);
+        | jmp >2
+        | 1:
+        | add qword [rsi], 8 * (insn_len(insn) + body->iseq_encoded[pos+1]) //move vPC
+        | 2:
         | jmp => (pos + body->iseq_encoded[pos+1] + insn_len(insn)) // current_pc + offset argument + fake dispatch
         break;
       case BIN(pop):
