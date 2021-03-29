@@ -165,11 +165,39 @@ jit_compile(rb_execution_context_t *ec)
         | 2:
         | jmp => (pos + body->iseq_encoded[pos+1] + insn_len(insn)) // current_pc + offset argument + fake dispatch
         break;
+      case BIN(branchif):
+        | mov rcx, [rdi+EC_IM_OFFSET]
+        | not rcx
+        | test rcx, [rdi+EC_IF_OFFSET]
+        | jz >1
+
+        // interrupts raised, call original instruction
+        emit_call_to_insn_function(insn, Dst);
+        | mov64 rcx, (uint64_t)(body->iseq_encoded + pos + insn_len(insn))
+        | cmp rcx, [rax]
+        | jne => pos + body->iseq_encoded[pos+1] + insn_len(insn) // current_pc + offset argument
+        | jmp => pos + insn_len(insn)
+
+        // test top of stack
+        | 1:
+        | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE)
+        | mov rcx, qword [rsi+CFP_SP_OFFSET]
+        | mov rcx, qword [rcx]
+        | test rcx, ~Qnil
+        | jz >2
+
+        //
+        | add qword [rsi], sizeof(VALUE) * (insn_len(insn) + body->iseq_encoded[pos+1]) //move vPC
+        | jmp => (pos + body->iseq_encoded[pos+1] + insn_len(insn)) // current_pc + offset argument + fake dispatch
+
+        // fall-through
+        | 2:
+        | add qword [rsi], sizeof(VALUE) * (insn_len(insn)) //move vPC
+        break;
       case BIN(pop):
         | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
         | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move vSP
         break;
-      case BIN(branchif):
       case BIN(branchunless):
       case BIN(branchnil):
       case BIN(opt_getinlinecache):
