@@ -149,6 +149,12 @@ jit_compile(rb_execution_context_t *ec)
     |=>pos:
     insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
     switch(insn){
+      case BIN(putobject_INT2FIX_1_):
+        | mov rcx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
+        | mov qword [rcx], INT2FIX(1) //put INT2FIX(1) at [sp]
+        | add qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP up
+        | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
+        break;
       case BIN(leave):
         emit_call_to_insn_function(insn, Dst);
         | ret
