@@ -180,6 +180,17 @@ jit_compile(rb_execution_context_t *ec)
         | add qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP up
         | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
         break;
+      case BIN(putobject):
+        if(FIXNUM_P(body->iseq_encoded[pos+1])) {
+          | mov rcx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
+          | mov64 rax, body->iseq_encoded[pos+1]
+          | mov [rcx], rax
+          | add qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP up
+          | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
+        } else {
+          emit_call_to_insn_function(insn, Dst);
+        }
+        break;
       case BIN(leave):
         emit_call_to_insn_function(insn, Dst);
         | ret
