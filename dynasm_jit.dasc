@@ -27,9 +27,11 @@
 
 #define CFP_PC_OFFSET offsetof(rb_control_frame_t, pc)
 #define CFP_SP_OFFSET offsetof(rb_control_frame_t, sp)
+#define CFP_EP_OFFSET offsetof(rb_control_frame_t, ep)
 
 #define EC_IM_OFFSET offsetof(rb_execution_context_t, interrupt_mask)
 #define EC_IF_OFFSET offsetof(rb_execution_context_t, interrupt_flag)
+#define EC_FLAGS_OFFSET sizeof(VALUE) * VM_ENV_DATA_INDEX_FLAGS
 
 typedef rb_control_frame_t* (*insn_function)(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp);
 typedef rb_control_frame_t* (*dynamic_assembeled_function)(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp);
@@ -149,6 +151,29 @@ jit_compile(rb_execution_context_t *ec)
     |=>pos:
     insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
     switch(insn){
+      case BIN(getlocal_WC_0):
+        | mov rax, qword [rsi+CFP_EP_OFFSET] //get the EP from CFP and put it into RAX
+        | mov rax, qword [rax - sizeof(VALUE) * body->iseq_encoded[pos+1]]
+        | mov rcx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
+        | mov qword [rcx], rax //put getlocal result on top of stack
+        | add qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP up
+        | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
+        break;
+      case BIN(setlocal_WC_0):
+        | mov rax, qword [rdi+EC_FLAGS_OFFSET]
+        | mov rax, qword [rax]
+        | test rax, VM_ENV_FLAG_WB_REQUIRED
+        | jz >1
+        emit_call_to_insn_function(insn, Dst);
+        |jmp => pos + insn_len(insn)
+        |1:
+        | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE)
+        | mov rcx, qword [rsi+CFP_SP_OFFSET]
+        | mov rcx, qword [rcx]
+        | mov rax, qword [rsi+CFP_EP_OFFSET] //get the EP from CFP and put it into RAX
+        | mov qword [rax - sizeof(VALUE) * body->iseq_encoded[pos+1]], rcx
+        | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
+        break;
       case BIN(putobject_INT2FIX_1_):
         | mov rcx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
         | mov qword [rcx], INT2FIX(1) //put INT2FIX(1) at [sp]
