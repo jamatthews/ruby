@@ -21,7 +21,7 @@
 #include "insns_info.inc"
 
 #ifndef DJ_CHECK_MODE
-#define DJ_CHECK_MODE 0
+#define DJ_CHECK_MODE 1
 #endif
 #define DJ_ASSERT(expr) RUBY_ASSERT_MESG_WHEN(DJ_CHECK_MODE > 0, expr, #expr)
 
@@ -40,6 +40,9 @@ static dynamic_assembeled_function jit_compile(rb_execution_context_t *ec);
 static insn_function* insn_functions_table;
 static void emit_call_to_insn_function(int insn, dasm_State** Dst);
 static void emit_interrupt_check(int insn, dasm_State** Dst);
+static void pre_insn_debug(int insn, dasm_State** Dst);
+static void precall(dasm_State** Dst);
+static void postcall(dasm_State** Dst);
 
 static void* link_and_encode(dasm_State** d)
 {
@@ -54,7 +57,7 @@ static void* link_and_encode(dasm_State** d)
 
 VALUE dynasm_jit_exec(rb_execution_context_t *ec)
 {
-  rb_thread_t *th = rb_ec_thread_ptr(ec);
+  rb_thread_t *th;
   rb_control_frame_t *reg_cfp = ec->cfp;
   struct rb_iseq_constant_body *body = reg_cfp->iseq->body;
 
@@ -66,7 +69,7 @@ VALUE dynasm_jit_exec(rb_execution_context_t *ec)
     return Qundef;
   }
   reg_cfp = body->dynasm_jit_func(ec, reg_cfp);
-  if (th->retval != Qundef) {
+  if ((th = rb_ec_thread_ptr(ec))->retval != Qundef) {
     VALUE ret = th->retval;
     th->retval = Qundef;
 
@@ -150,8 +153,33 @@ jit_compile(rb_execution_context_t *ec)
   while (pos < body->iseq_size) {
     |=>pos:
     insn = rb_vm_insn_addr2insn((void *)body->iseq_encoded[pos]);
+
+    if(DJ_CHECK_MODE > 0)
+      pre_insn_debug(insn, Dst);
+
     switch(insn){
-      // case BIN(opt_lt):
+      // // case BIN(opt_lt):
+      // //   | mov rax, qword [rsi+CFP_SP_OFFSET]
+      // //   | mov rax, qword [rax - sizeof(VALUE)]
+      // //   | test rax, RUBY_FIXNUM_FLAG
+      // //   | jz >1
+      // //   | mov rbx, qword [rsi+CFP_SP_OFFSET]
+      // //   | mov rbx, qword [rbx - 2 * sizeof(VALUE)]
+      // //   | test rbx, RUBY_FIXNUM_FLAG
+      // //   | jz >1
+      // //   | cmp rbx, rax
+      // //   | mov64 rax, Qfalse
+      // //   | mov64 rbx, Qtrue
+      // //   | cmovl rax, rbx
+      // //   | mov rbx, qword [rsi+CFP_SP_OFFSET]
+      // //   | mov qword [rbx - 2 * sizeof(VALUE)],  rax
+      // //   | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP down
+      // //   | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
+      // //   | jmp => pos + insn_len(insn)
+      // //   | 1:
+      // //   emit_call_to_insn_function(insn, Dst);
+      // case BIN(opt_plus):
+      //   //first check basic op redefined
       //   | mov rax, qword [rsi+CFP_SP_OFFSET]
       //   | mov rax, qword [rax - sizeof(VALUE)]
       //   | test rax, RUBY_FIXNUM_FLAG
@@ -160,127 +188,108 @@ jit_compile(rb_execution_context_t *ec)
       //   | mov rbx, qword [rbx - 2 * sizeof(VALUE)]
       //   | test rbx, RUBY_FIXNUM_FLAG
       //   | jz >1
-      //   | cmp rbx, rax
-      //   | mov64 rax, Qfalse
-      //   | mov64 rbx, Qtrue
-      //   | cmovl rax, rbx
+      //   | add rax, rbx
+      //   | jo >1
+      //   | sub rax, 1
       //   | mov rbx, qword [rsi+CFP_SP_OFFSET]
       //   | mov qword [rbx - 2 * sizeof(VALUE)],  rax
       //   | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP down
       //   | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
-      //   | jmp => pos + insn_len(insn)
+      //   |jmp => pos + insn_len(insn)
       //   | 1:
       //   emit_call_to_insn_function(insn, Dst);
-      case BIN(opt_plus):
-        //first check basic op redefined
-        | mov rax, qword [rsi+CFP_SP_OFFSET]
-        | mov rax, qword [rax - sizeof(VALUE)]
-        | test rax, RUBY_FIXNUM_FLAG
-        | jz >1
-        | mov rbx, qword [rsi+CFP_SP_OFFSET]
-        | mov rbx, qword [rbx - 2 * sizeof(VALUE)]
-        | test rbx, RUBY_FIXNUM_FLAG
-        | jz >1
-        | add rax, rbx
-        | jo >1
-        | sub rax, 1
-        | mov rbx, qword [rsi+CFP_SP_OFFSET]
-        | mov qword [rbx - 2 * sizeof(VALUE)],  rax
-        | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP down
-        | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
-        |jmp => pos + insn_len(insn)
-        | 1:
-        emit_call_to_insn_function(insn, Dst);
-        break;
-      case BIN(getlocal_WC_0):
-        | mov rax, qword [rsi+CFP_EP_OFFSET] //get the EP from CFP and put it into RAX
-        | mov rax, qword [rax - sizeof(VALUE) * body->iseq_encoded[pos+1]]
-        | mov rcx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
-        | mov qword [rcx], rax //put getlocal result on top of stack
-        | add qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP up
-        | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
-        break;
-      case BIN(setlocal_WC_0):
-        | mov rax, qword [rdi+EC_FLAGS_OFFSET]
-        | mov rax, qword [rax]
-        | test rax, VM_ENV_FLAG_WB_REQUIRED
-        | jz >1
-        emit_call_to_insn_function(insn, Dst);
-        |jmp => pos + insn_len(insn)
-        |1:
-        | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE)
-        | mov rcx, qword [rsi+CFP_SP_OFFSET]
-        | mov rcx, qword [rcx]
-        | mov rax, qword [rsi+CFP_EP_OFFSET] //get the EP from CFP and put it into RAX
-        | mov qword [rax - sizeof(VALUE) * body->iseq_encoded[pos+1]], rcx
-        | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
-        break;
-      case BIN(putobject_INT2FIX_1_):
-        | mov rcx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
-        | mov qword [rcx], INT2FIX(1) //put INT2FIX(1) at [sp]
-        | add qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP up
-        | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
-        break;
-      case BIN(putobject):
-        if(FIXNUM_P(body->iseq_encoded[pos+1])) {
-          | mov rcx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
-          | mov64 rax, body->iseq_encoded[pos+1]
-          | mov [rcx], rax
-          | add qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP up
-          | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
-        } else {
-          emit_call_to_insn_function(insn, Dst);
-        }
-        break;
+      //   break;
+      // case BIN(getlocal_WC_0):
+      //   | mov rax, qword [rsi+CFP_EP_OFFSET] //get the EP from CFP and put it into RAX
+      //   | mov rax, qword [rax - sizeof(VALUE) * body->iseq_encoded[pos+1]]
+      //   | mov rcx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
+      //   | mov qword [rcx], rax //put getlocal result on top of stack
+      //   | add qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP up
+      //   | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
+      //   break;
+      // case BIN(setlocal_WC_0):
+      //   | mov rax, qword [rdi+EC_FLAGS_OFFSET]
+      //   | mov rax, qword [rax]
+      //   | test rax, VM_ENV_FLAG_WB_REQUIRED
+      //   | jz >1
+      //   emit_call_to_insn_function(insn, Dst);
+      //   |jmp => pos + insn_len(insn)
+      //   |1:
+      //   | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE)
+      //   | mov rcx, qword [rsi+CFP_SP_OFFSET]
+      //   | mov rcx, qword [rcx]
+      //   | mov rax, qword [rsi+CFP_EP_OFFSET] //get the EP from CFP and put it into RAX
+      //   | mov qword [rax - sizeof(VALUE) * body->iseq_encoded[pos+1]], rcx
+      //   | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
+      //   break;
+      // case BIN(putobject_INT2FIX_1_):
+      //   | mov rcx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
+      //   | mov qword [rcx], INT2FIX(1) //put INT2FIX(1) at [sp]
+      //   | add qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP up
+      //   | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
+      //   break;
+      // case BIN(putobject):
+      //   if(FIXNUM_P(body->iseq_encoded[pos+1])) {
+      //     | mov rcx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
+      //     | mov64 rax, body->iseq_encoded[pos+1]
+      //     | mov [rcx], rax
+      //     | add qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP up
+      //     | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
+      //   } else {
+      //     emit_call_to_insn_function(insn, Dst);
+      //   }
+      //   break;
       case BIN(leave):
         emit_call_to_insn_function(insn, Dst);
         | ret
         break;
+      // case BIN(jump):
+      //   | mov rcx, [rdi+EC_IM_OFFSET]
+      //   | not rcx
+      //   | test rcx, [rdi+EC_IF_OFFSET]
+      //   | jz >1
+      //   emit_call_to_insn_function(insn, Dst);
+      //   | jmp >2
+      //   | 1:
+      //   | add qword [rsi], 8 * (insn_len(insn) + body->iseq_encoded[pos+1]) //move vPC
+      //   | 2:
+      //   | jmp => (pos + body->iseq_encoded[pos+1] + insn_len(insn)) // current_pc + offset argument + fake dispatch
+      //   break;
+      // case BIN(branchif):
+      //   | mov rcx, [rdi+EC_IM_OFFSET]
+      //   | not rcx
+      //   | test rcx, [rdi+EC_IF_OFFSET]
+      //   | jz >1
+      //
+      //   // interrupts raised, call original instruction
+      //   emit_call_to_insn_function(insn, Dst);
+      //   | mov64 rcx, (uint64_t)(body->iseq_encoded + pos + insn_len(insn))
+      //   | cmp rcx, [rax]
+      //   | jne => pos + body->iseq_encoded[pos+1] + insn_len(insn) // current_pc + offset argument
+      //   | jmp => pos + insn_len(insn)
+      //
+      //   // test top of stack
+      //   | 1:
+      //   | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE)
+      //   | mov rcx, qword [rsi+CFP_SP_OFFSET]
+      //   | mov rcx, qword [rcx]
+      //   | test rcx, ~Qnil
+      //   | jz >2
+      //
+      //   //
+      //   | add qword [rsi], sizeof(VALUE) * (insn_len(insn) + body->iseq_encoded[pos+1]) //move vPC
+      //   | jmp => (pos + body->iseq_encoded[pos+1] + insn_len(insn)) // current_pc + offset argument + fake dispatch
+      //
+      //   // fall-through
+      //   | 2:
+      //   | add qword [rsi], sizeof(VALUE) * (insn_len(insn)) //move vPC
+      //   break;
+      // case BIN(pop):
+      //   | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
+      //   | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move vSP
+      //   break;
       case BIN(jump):
-        | mov rcx, [rdi+EC_IM_OFFSET]
-        | not rcx
-        | test rcx, [rdi+EC_IF_OFFSET]
-        | jz >1
-        emit_call_to_insn_function(insn, Dst);
-        | jmp >2
-        | 1:
-        | add qword [rsi], 8 * (insn_len(insn) + body->iseq_encoded[pos+1]) //move vPC
-        | 2:
-        | jmp => (pos + body->iseq_encoded[pos+1] + insn_len(insn)) // current_pc + offset argument + fake dispatch
-        break;
       case BIN(branchif):
-        | mov rcx, [rdi+EC_IM_OFFSET]
-        | not rcx
-        | test rcx, [rdi+EC_IF_OFFSET]
-        | jz >1
-
-        // interrupts raised, call original instruction
-        emit_call_to_insn_function(insn, Dst);
-        | mov64 rcx, (uint64_t)(body->iseq_encoded + pos + insn_len(insn))
-        | cmp rcx, [rax]
-        | jne => pos + body->iseq_encoded[pos+1] + insn_len(insn) // current_pc + offset argument
-        | jmp => pos + insn_len(insn)
-
-        // test top of stack
-        | 1:
-        | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE)
-        | mov rcx, qword [rsi+CFP_SP_OFFSET]
-        | mov rcx, qword [rcx]
-        | test rcx, ~Qnil
-        | jz >2
-
-        //
-        | add qword [rsi], sizeof(VALUE) * (insn_len(insn) + body->iseq_encoded[pos+1]) //move vPC
-        | jmp => (pos + body->iseq_encoded[pos+1] + insn_len(insn)) // current_pc + offset argument + fake dispatch
-
-        // fall-through
-        | 2:
-        | add qword [rsi], sizeof(VALUE) * (insn_len(insn)) //move vPC
-        break;
-      case BIN(pop):
-        | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
-        | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move vSP
-        break;
       case BIN(branchunless):
       case BIN(branchnil):
       case BIN(opt_getinlinecache):
@@ -336,8 +345,6 @@ static void check_for_exception(dasm_State** Dst){
 
 static void emit_call_to_insn_function(int insn, dasm_State** Dst)
 {
-  if(DJ_CHECK_MODE > 0)
-    pre_insn_debug(insn, Dst);
   // save first (ec) and second (cfp) arguments
   precall(Dst);
   // call the VM implementation for this isntruction
