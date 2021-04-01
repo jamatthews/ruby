@@ -20,7 +20,7 @@
  *  (2-2) TracePoint API (not yet)
  *
  */
-
+#include "dynasm_jit.h"
 #include "eval_intern.h"
 #include "internal.h"
 #include "internal/hash.h"
@@ -85,6 +85,7 @@ update_global_event_hook(rb_event_flag_t vm_events)
 #if USE_MJIT
         mjit_call_p = FALSE;
 #endif
+        dj_call_p = FALSE;
 
 	/* write all ISeqs if and only if new events are added */
 	rb_iseq_trace_set_all(new_iseq_events | enabled_iseq_events);

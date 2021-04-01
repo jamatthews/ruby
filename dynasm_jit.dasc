@@ -45,6 +45,8 @@ static void pre_insn_debug(int insn, dasm_State** Dst);
 static void precall(dasm_State** Dst);
 static void postcall(dasm_State** Dst);
 
+bool dj_call_p = true;
+
 static void* link_and_encode(dasm_State** d)
 {
   size_t sz;
@@ -62,7 +64,7 @@ VALUE dynasm_jit_exec(rb_execution_context_t *ec)
   rb_control_frame_t *reg_cfp = ec->cfp;
   struct rb_iseq_constant_body *body = reg_cfp->iseq->body;
 
-  if(!mjit_call_p)
+  if(!dj_call_p)
     return Qundef;
 
   if(body->dynasm_jit_func == NULL) {
@@ -162,26 +164,26 @@ jit_compile(rb_execution_context_t *ec)
       pre_insn_debug(insn, Dst);
 
     switch(insn){
-      case BIN(opt_lt):
-        | mov rax, qword [rsi+CFP_SP_OFFSET]
-        | mov rax, qword [rax - sizeof(VALUE)]
-        | test rax, RUBY_FIXNUM_FLAG
-        | jz >1
-        | mov rbx, qword [rsi+CFP_SP_OFFSET]
-        | mov rbx, qword [rbx - 2 * sizeof(VALUE)]
-        | test rbx, RUBY_FIXNUM_FLAG
-        | jz >1
-        | cmp rbx, rax
-        | mov64 rax, Qfalse
-        | mov64 rbx, Qtrue
-        | cmovl rax, rbx
-        | mov rbx, qword [rsi+CFP_SP_OFFSET]
-        | mov qword [rbx - 2 * sizeof(VALUE)],  rax
-        | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP down
-        | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
-        | jmp => pos + insn_len(insn)
-        | 1:
-        emit_call_to_insn_function(insn, Dst);
+      // case BIN(opt_lt):
+      //   | mov rax, qword [rsi+CFP_SP_OFFSET]
+      //   | mov rax, qword [rax - sizeof(VALUE)]
+      //   | test rax, RUBY_FIXNUM_FLAG
+      //   | jz >1
+      //   | mov rbx, qword [rsi+CFP_SP_OFFSET]
+      //   | mov rbx, qword [rbx - 2 * sizeof(VALUE)]
+      //   | test rbx, RUBY_FIXNUM_FLAG
+      //   | jz >1
+      //   | cmp rbx, rax
+      //   | mov64 rax, Qfalse
+      //   | mov64 rbx, Qtrue
+      //   | cmovl rax, rbx
+      //   | mov rbx, qword [rsi+CFP_SP_OFFSET]
+      //   | mov qword [rbx - 2 * sizeof(VALUE)],  rax
+      //   | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP down
+      //   | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
+      //   | jmp => pos + insn_len(insn)
+      //   | 1:
+      //   emit_call_to_insn_function(insn, Dst);
       case BIN(opt_plus):
         //first check basic op redefined
         | mov rax, qword [rsi+CFP_SP_OFFSET]
