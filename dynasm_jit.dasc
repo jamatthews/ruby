@@ -166,20 +166,18 @@ jit_compile(rb_execution_context_t *ec)
     switch(insn){
       case BIN(opt_lt):
         //first check basic op redefined
-        | mov rax, qword [rsi+CFP_SP_OFFSET]
-        | mov rax, qword [rax - sizeof(VALUE)]
+        | mov rdx, qword [rsi+CFP_SP_OFFSET]
+        | mov rax, qword [rdx - sizeof(VALUE)]
         | test rax, RUBY_FIXNUM_FLAG
         | jz >1
-        | mov rcx, qword [rsi+CFP_SP_OFFSET]
-        | mov rcx, qword [rcx - 2 * sizeof(VALUE)]
+        | mov rcx, qword [rdx - 2 * sizeof(VALUE)]
         | test rcx, RUBY_FIXNUM_FLAG
         | jz >1
         | cmp rcx, rax
         | mov64 rax, Qfalse
         | mov64 rcx, Qtrue
         | cmovl rax, rcx
-        | mov rcx, qword [rsi+CFP_SP_OFFSET]
-        | mov qword [rcx - 2 * sizeof(VALUE)],  rax
+        | mov qword [rdx - 2 * sizeof(VALUE)],  rax
         | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP down
         | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
         | jmp => pos + insn_len(insn)
@@ -188,19 +186,17 @@ jit_compile(rb_execution_context_t *ec)
         break;
       case BIN(opt_plus):
         //first check basic op redefined
-        | mov rax, qword [rsi+CFP_SP_OFFSET]
-        | mov rax, qword [rax - sizeof(VALUE)]
+        | mov rdx, qword [rsi+CFP_SP_OFFSET]
+        | mov rax, qword [rdx - sizeof(VALUE)]
         | test rax, RUBY_FIXNUM_FLAG
         | jz >1
-        | mov rcx, qword [rsi+CFP_SP_OFFSET]
-        | mov rcx, qword [rcx - 2 * sizeof(VALUE)]
+        | mov rcx, qword [rdx - 2 * sizeof(VALUE)]
         | test rcx, RUBY_FIXNUM_FLAG
         | jz >1
         | add rax, rcx
         | jo >1
         | sub rax, 1
-        | mov rcx, qword [rsi+CFP_SP_OFFSET]
-        | mov qword [rcx - 2 * sizeof(VALUE)],  rax
+        | mov qword [rdx - 2 * sizeof(VALUE)],  rax
         | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP down
         | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
         |jmp => pos + insn_len(insn)
@@ -210,8 +206,8 @@ jit_compile(rb_execution_context_t *ec)
       case BIN(getlocal_WC_0):
         | mov rax, qword [rsi+CFP_EP_OFFSET] //get the EP from CFP and put it into RAX
         | mov rax, qword [rax - sizeof(VALUE) * body->iseq_encoded[pos+1]]
-        | mov rcx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
-        | mov qword [rcx], rax //put getlocal result on top of stack
+        | mov rdx, qword [rsi+CFP_SP_OFFSET]
+        | mov qword [rdx], rax //put getlocal result on top of stack
         | add qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP up
         | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
         break;
@@ -224,8 +220,8 @@ jit_compile(rb_execution_context_t *ec)
         |jmp => pos + insn_len(insn)
         |1:
         | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE)
-        | mov rcx, qword [rsi+CFP_SP_OFFSET]
-        | mov rcx, qword [rcx]
+        | mov rdx, qword [rsi+CFP_SP_OFFSET]
+        | mov rcx, qword [rdx]
         | mov rax, qword [rsi+CFP_EP_OFFSET] //get the EP from CFP and put it into RAX
         | mov qword [rax - sizeof(VALUE) * body->iseq_encoded[pos+1]], rcx
         | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
@@ -238,9 +234,9 @@ jit_compile(rb_execution_context_t *ec)
         break;
       case BIN(putobject):
         if(FIXNUM_P(body->iseq_encoded[pos+1])) {
-          | mov rcx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
+          | mov rdx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
           | mov64 rax, body->iseq_encoded[pos+1]
-          | mov [rcx], rax
+          | mov [rdx], rax
           | add qword [rsi+CFP_SP_OFFSET], sizeof(VALUE) //move SP up
           | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
         } else {
@@ -279,8 +275,8 @@ jit_compile(rb_execution_context_t *ec)
         // test top of stack
         | 1:
         | sub qword [rsi+CFP_SP_OFFSET], sizeof(VALUE)
-        | mov rcx, qword [rsi+CFP_SP_OFFSET]
-        | mov rcx, qword [rcx]
+        | mov rdx, qword [rsi+CFP_SP_OFFSET]
+        | mov rcx, qword [rdx]
         | test rcx, ~Qnil
         | jz >2
 
