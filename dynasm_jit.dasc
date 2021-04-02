@@ -207,6 +207,7 @@ jit_compile(rb_execution_context_t *ec)
         | 1:
         emit_call_to_insn_function(insn, Dst);
         break;
+#if 0
       case BIN(getlocal_WC_0):
         | mov rax, qword [rsi+CFP_EP_OFFSET] //get the EP from CFP and put it into RAX
         | mov rax, qword [rax - sizeof(VALUE) * body->iseq_encoded[pos+1]]
@@ -230,6 +231,7 @@ jit_compile(rb_execution_context_t *ec)
         | mov qword [rax - sizeof(VALUE) * body->iseq_encoded[pos+1]], rcx
         | add qword [rsi+CFP_PC_OFFSET], sizeof(VALUE) * (insn_len(insn)) //move vPC
         break;
+#endif
       case BIN(putobject_INT2FIX_1_):
         | mov rcx, qword [rsi+CFP_SP_OFFSET] //get the stack pointer from CFP and put it into RCX
         | mov qword [rcx], INT2FIX(1) //put INT2FIX(1) at [sp]
