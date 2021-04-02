@@ -44,7 +44,6 @@ static void emit_interrupt_check(int insn, dasm_State** Dst);
 static void pre_insn_debug(int insn, dasm_State** Dst);
 static void precall(dasm_State** Dst);
 static void postcall(dasm_State** Dst);
-static void setup_macros(dasm_State** Dst);
 
 bool dj_call_p = true;
 
@@ -150,7 +149,6 @@ jit_compile(rb_execution_context_t *ec)
   |->exception_handler:
     | ret
   |->main:
-  setup_macros(Dst);
   unsigned int pos = 0;
   int insn;
 
@@ -325,26 +323,16 @@ jit_compile(rb_execution_context_t *ec)
   return (dynamic_assembeled_function) labels[lbl_main];
 }
 
-static void setup_macros(dasm_State** Dst) {
-  |.macro precall
-    | push rdi
-    | push rsi
-    | push rsi
-  |.endmacro
-  |.macro postcall
-    | pop rsi
-    | pop rsi
-    | pop rdi
-  |.endmacro
-  |.macro check_for_exception
-    | cmp rax, 0
-    | je ->exception_handler //If an instruction raises an exception (like throw) it returns 0
-    | mov rsi, rax // Normal case. An instruction returns the (potentially updated) control frame pointer.
-  |.endmacro
+static void precall(dasm_State** Dst){
+  | push rdi
+  | push rsi
+  | push rsi
 }
 
 static void postcall(dasm_State** Dst){
-
+  | pop rsi
+  | pop rsi
+  | pop rdi
 }
 
 static void pre_insn_debug(int insn, dasm_State** Dst){
@@ -355,11 +343,20 @@ static void pre_insn_debug(int insn, dasm_State** Dst){
   postcall(Dst);
 }
 
+static void check_for_exception(dasm_State** Dst){
+  | cmp rax, 0
+  | je ->exception_handler //If an instruction raises an exception (like throw) it returns 0
+  | mov rsi, rax // Normal case. An instruction returns the (potentially updated) control frame pointer.
+}
+
 static void emit_call_to_insn_function(int insn, dasm_State** Dst)
 {
-  | precall
+  // save first (ec) and second (cfp) arguments
+  precall(Dst);
+  // call the VM implementation for this isntruction
   | mov64 rax, (uint64_t)(insn_functions_table[insn])
   | call rax
-  | postcall
-  | check_for_exception
+  postcall(Dst);
+  // save first (ec) and second (cfp) arguments
+  check_for_exception(Dst);
 }
