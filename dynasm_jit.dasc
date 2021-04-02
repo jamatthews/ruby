@@ -325,13 +325,13 @@ jit_compile(rb_execution_context_t *ec)
 
 static void precall(dasm_State** Dst){
   | push rdi
-  | push rsi
+  | push rdx
   | push rsi
 }
 
 static void postcall(dasm_State** Dst){
   | pop rsi
-  | pop rsi
+  | pop rdx
   | pop rdi
 }
 
