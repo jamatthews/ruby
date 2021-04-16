@@ -197,3 +197,82 @@ vm_exec_core(rb_execution_context_t *ec, VALUE initial)
     }
 }
 #endif
+
+#pragma push_macro("OPT_CALL_THREADED_CODE")
+#undef OPT_CALL_THREADED_CODE
+#define OPT_CALL_THREADED_CODE 1
+
+#pragma push_macro("VM_REG_PC")
+#undef VM_REG_PC
+#define VM_REG_PC  (VM_REG_CFP->pc)
+
+#pragma push_macro("GET_PC()")
+#undef  GET_PC
+#define GET_PC()           (COLLECT_USAGE_REGISTER_HELPER(PC, GET, VM_REG_PC))
+
+#pragma push_macro("RESTORE_REGS()")
+#undef  RESTORE_REGS
+#define RESTORE_REGS() do { \
+    VM_REG_CFP = ec->cfp; \
+} while (0)
+
+#pragma push_macro("DISPATCH_ORIGINAL_INSN(x)")
+#undef  DISPATCH_ORIGINAL_INSN
+#define DISPATCH_ORIGINAL_INSN(x) return jit_insn_opt_send_without_block(ec, reg_cfp);
+
+#pragma push_macro("END_INSN(x)")
+#undef  END_INSN
+#define END_INSN(x) return reg_cfp;
+
+#pragma push_macro("NEXT_INSN()")
+#undef  NEXT_INSN
+#define NEXT_INSN() return reg_cfp;
+
+#pragma push_macro("THROW_EXCEPTION(exc)")
+#undef  THROW_EXCEPTION
+#define THROW_EXCEPTION(exc) do { \
+    ec->errinfo = (VALUE)(exc); \
+    return 0; \
+} while (0)
+
+#pragma push_macro("INSN_ENTRY(x)")
+#undef  INSN_ENTRY
+#define INSN_ENTRY(x) \
+  rb_control_frame_t * \
+  jit_insn_##x(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp)
+
+#pragma push_macro("START_OF_ORIGINAL_INSN(x)")
+#undef  START_OF_ORIGINAL_INSN
+#define START_OF_ORIGINAL_INSN(x)
+
+#pragma push_macro("DEBUG_ENTER_INSN(x)")
+#undef  DEBUG_ENTER_INSN
+#define DEBUG_ENTER_INSN(x)
+
+#pragma push_macro("DEBUG_END_INSN(x)")
+#undef  DEBUG_END_INSN
+#define DEBUG_END_INSN(x)
+
+#include "vm_insn_functions.inc"
+#include "vm_insn_functions_table.inc"
+
+#undef OPT_CALL_THREADED_CODE
+
+const void **
+rb_vm_get_insn_functions_table(void)
+{
+    return (const void **)insn_functions_table;
+}
+
+#pragma pop_macro("OPT_CALL_THREADED_CODE")
+#pragma pop_macro("VM_REG_PC")
+#pragma pop_macro("GET_PC()")
+#pragma pop_macro("RESTORE_REGS()")
+#pragma pop_macro("DISPATCH_ORIGINAL_INSN(x)")
+#pragma pop_macro("END_INSN(x)")
+#pragma pop_macro("NEXT_INSN()")
+#pragma pop_macro("THROW_EXCEPTION(exc)")
+#pragma pop_macro("INSN_ENTRY(x)")
+#pragma pop_macro("START_OF_ORIGINAL_INSN(x)")
+#pragma pop_macro("DEBUG_ENTER_INSN(x)")
+#pragma pop_macro("DEBUG_END_INSN(x)")

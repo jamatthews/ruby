@@ -980,10 +980,7 @@ typedef struct rb_thread_struct {
     VALUE thgroup;
     VALUE value;
 
-    /* temporary place of retval on OPT_CALL_THREADED_CODE */
-#if OPT_CALL_THREADED_CODE
     VALUE retval;
-#endif
 
     /* async errinfo queue */
     VALUE pending_interrupt_queue;
