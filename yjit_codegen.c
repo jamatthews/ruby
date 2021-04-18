@@ -1991,6 +1991,25 @@ gen_opt_getinlinecache(jitstate_t *jit, ctx_t *ctx)
     return YJIT_END_BLOCK;
 }
 
+static codegen_status_t
+gen_opt_nil_p(jitstate_t* jit, ctx_t* ctx)
+{
+  if (!assume_bop_not_redefined(jit->block, NIL_REDEFINED_OP_FLAG, BOP_NIL_P)) {
+      return YJIT_CANT_COMPILE;
+  }
+
+  x86opnd_t val_opnd = ctx_stack_pop(ctx, 1);
+  cmp(cb, val_opnd, imm_opnd(Qnil)); // test if Qnil
+  mov(cb, REG0, imm_opnd(Qfalse)); // // REG0 = Qfalse
+  mov(cb, REG1, imm_opnd(Qtrue)); // // REG1 = Qtrue
+  cmove(cb, REG0, REG1);
+
+  x86opnd_t dst = ctx_stack_push(ctx, TYPE_UNKNOWN);
+  mov(cb, dst, REG0); //put REG0 at top of stack
+
+  return YJIT_KEEP_COMPILING;
+}
+
 static void
 yjit_reg_op(int opcode, codegen_fn gen_fn)
 {
@@ -2041,4 +2060,5 @@ yjit_init_codegen(void)
     yjit_reg_op(BIN(jump), gen_jump);
     yjit_reg_op(BIN(opt_send_without_block), gen_opt_send_without_block);
     yjit_reg_op(BIN(leave), gen_leave);
+    yjit_reg_op(BIN(opt_nil_p), gen_opt_nil_p);
 }
