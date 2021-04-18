@@ -117,6 +117,8 @@ VALUE rb_ec_backtrace_object(const struct rb_execution_context_struct *ec);
 void rb_backtrace_use_iseq_first_lineno_for_last_location(VALUE self);
 MJIT_SYMBOL_EXPORT_END
 
+const void **rb_vm_get_insn_functions_table(void);
+
 #define RUBY_DTRACE_CREATE_HOOK(name, arg) \
     RUBY_DTRACE_HOOK(name##_CREATE, arg)
 #define RUBY_DTRACE_HOOK(name, arg) \

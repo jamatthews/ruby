@@ -18,6 +18,9 @@
 // Map from YARV opcodes to code generation functions
 static codegen_fn gen_fns[VM_INSTRUCTION_SIZE] = { NULL };
 
+typedef rb_control_frame_t* (*insn_function)(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp);
+static insn_function* insn_functions_table;
+
 // Code block into which we write machine code
 static codeblock_t block;
 codeblock_t* cb = NULL;
@@ -428,6 +431,7 @@ gen_pop(jitstate_t* jit, ctx_t* ctx)
 {
     // Decrement SP
     ctx_stack_pop(ctx, 1);
+
     return YJIT_KEEP_COMPILING;
 }
 
@@ -2011,6 +2015,7 @@ yjit_init_codegen(void)
     cb_init(cb, mem_block, mem_size/2);
     ocb = &outline_block;
     cb_init(ocb, mem_block + mem_size/2, mem_size/2);
+    insn_functions_table = (insn_function*) rb_vm_get_insn_functions_table();
 
     // Map YARV opcodes to the corresponding codegen functions
     yjit_reg_op(BIN(dup), gen_dup);
