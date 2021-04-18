@@ -14,6 +14,7 @@
 
 static const void *const insn_functions_table[] = {
 % RubyVM::Instructions.to_a.each do |i|
+    <% next if i.name == 'yjit_call_example_with_ec'%>
     <%= 'jit_insn_' + i.name %>,
 % end
 };

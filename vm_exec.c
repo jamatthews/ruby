@@ -210,6 +210,10 @@ vm_exec_core(rb_execution_context_t *ec, VALUE initial)
 #undef  GET_PC
 #define GET_PC()           (COLLECT_USAGE_REGISTER_HELPER(PC, GET, VM_REG_PC))
 
+#pragma push_macro("ADD_PC(x)")
+#undef  ADD_PC
+#define ADD_PC(x) x == x //total hack
+
 #pragma push_macro("RESTORE_REGS()")
 #undef  RESTORE_REGS
 #define RESTORE_REGS() do { \
@@ -267,6 +271,7 @@ rb_vm_get_insn_functions_table(void)
 #pragma pop_macro("OPT_CALL_THREADED_CODE")
 #pragma pop_macro("VM_REG_PC")
 #pragma pop_macro("GET_PC()")
+#pragma pop_macro("ADD_PC(x)")
 #pragma pop_macro("RESTORE_REGS()")
 #pragma pop_macro("DISPATCH_ORIGINAL_INSN(x)")
 #pragma pop_macro("END_INSN(x)")

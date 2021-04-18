@@ -419,19 +419,26 @@ gen_dup(jitstate_t* jit, ctx_t* ctx)
     return YJIT_KEEP_COMPILING;
 }
 
+rb_control_frame_t* fake_instruction_function_nop(rb_execution_context_t* ec, rb_control_frame_t* cfp){
+  fprintf(stderr, "cfp->sp %p\n", cfp->sp);
+  fprintf(stderr, "cfp->pc %p\n", cfp->pc);
+  return cfp;
+}
+
 static codegen_status_t
 gen_nop(jitstate_t* jit, ctx_t* ctx)
 {
-    // Do nothing
+    insn_function nop_fp = insn_functions_table[BIN(nop)];
+    yjit_save_regs(cb);
+    call_ptr(cb, REG0, (void *)nop_fp);
+    yjit_load_regs(cb);
     return YJIT_KEEP_COMPILING;
 }
 
 static codegen_status_t
 gen_pop(jitstate_t* jit, ctx_t* ctx)
 {
-    // Decrement SP
     ctx_stack_pop(ctx, 1);
-
     return YJIT_KEEP_COMPILING;
 }
 
